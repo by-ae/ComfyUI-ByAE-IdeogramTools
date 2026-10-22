@@ -23,10 +23,14 @@ async def put_store_entry(request: web.Request) -> web.Response:
     name = request.match_info.get("name", "")
     if bucket not in ("characters", "objects", "scenes"):
         return web.json_response({"error": "Invalid bucket"}, status=400)
+    if not name or len(name) > 128:
+        return web.json_response({"error": "Invalid or missing name"}, status=400)
     try:
         data = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON body"}, status=400)
+    if not isinstance(data, dict):
+        return web.json_response({"error": "Request body must be a JSON object"}, status=400)
     try:
         store.save_entry(bucket, name, data)
         return web.json_response({"ok": True, "bucket": bucket, "name": name})
@@ -54,7 +58,11 @@ async def get_bg_stat(request: web.Request) -> web.Response:
             "filename": fname,
             "temp_dir": temp_dir,
         })
-    mtime = os.path.getmtime(path)
+    try:
+        mtime = os.path.getmtime(path)
+    except (OSError, IOError) as e:
+        logger.warning("ByAE Ideogram: failed to stat background file %s: %s", path, e)
+        return web.json_response({"exists": False, "mtime": 0, "error": "stat failed"}, status=500)
     url = f"/view?filename={quote(fname)}&type=temp&subfolder="
     return web.json_response({
         "exists": True,
