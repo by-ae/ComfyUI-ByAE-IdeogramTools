@@ -36,6 +36,42 @@ git clone https://github.com/by-ae/ComfyUI-ByAE-IdeogramTools.git
 
 **ComfyUI-KJNodes does not need to be installed.**
 
+## Usage
+
+After installation, the nodes appear in the node menu under **ByAE/Ideogram**:
+
+1. **Ideogram 4 Prompt Builder Pro** - Add this node to start building your prompt visually
+2. **Preview BG Update** (optional) - Connect a workflow image and the builder's `guid` output to display it as the canvas background
+
+The builder outputs a structured JSON prompt compatible with Ideogram 4's API format, plus a preview image showing your layout.
+
+## Troubleshooting
+
+### Nodes don't appear in the menu
+
+- Ensure ComfyUI restarted completely after cloning
+- Check the ComfyUI console for import errors
+- Verify the folder is named `ComfyUI-ByAE-IdeogramTools` (not `ComfyUI-ByAE-IdeogramTools-main`)
+
+### "Failed to load stores" or route errors in console
+
+This is usually harmless. The store routes register on startup, and if they fail, character/object/scene save features may not work, but the builder itself will function normally. Check file permissions on your ComfyUI user directory.
+
+### Background image not updating
+
+- Verify the `guid` output from the builder is connected to Preview BG Update's `guid` input
+- Check the ComfyUI console for background image write errors
+- The temp directory must be writable (usually `ComfyUI/temp`)
+
+### Saved workflows break after updating
+
+Node names and internal IDs are stable. If a workflow breaks, check:
+- Width/height inputs are valid numbers (64-16384)
+- JSON import input (if used) contains valid JSON
+- No custom modifications were made to widget names
+
+For bugs or feature requests, please open an issue on GitHub.
+
 ## License
 
 This project is a derivative work based on **ComfyUI-KJNodes**, in particular `Ideogram4PromptBuilderKJ` and shared frontend utilities.

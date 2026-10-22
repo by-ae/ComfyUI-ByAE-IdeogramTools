@@ -284,7 +284,7 @@ def _parse_json_list(s):
             v = json.loads(s)
             if isinstance(v, list):
                 return v
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError, ValueError):
             pass
     return []
 
@@ -300,9 +300,13 @@ def _caption_to_boxes(caption):
                "palette": el.get("color_palette", []) or []}
         bb = el.get("bbox")
         if isinstance(bb, list) and len(bb) == 4:
-            ymin, xmin, ymax, xmax = bb
-            box.update(x=xmin / 1000.0, y=ymin / 1000.0,
-                       w=(xmax - xmin) / 1000.0, h=(ymax - ymin) / 1000.0)
+            try:
+                ymin, xmin, ymax, xmax = bb
+                box.update(x=xmin / 1000.0, y=ymin / 1000.0,
+                           w=(xmax - xmin) / 1000.0, h=(ymax - ymin) / 1000.0)
+            except (TypeError, ValueError, ZeroDivisionError):
+                k = idx % 6
+                box.update(x=0.03 + k * 0.035, y=0.03 + k * 0.035, w=0.22, h=0.14, nobbox=True)
         else:
             k = idx % 6
             box.update(x=0.03 + k * 0.035, y=0.03 + k * 0.035, w=0.22, h=0.14, nobbox=True)
@@ -391,7 +395,7 @@ folder and picked up automatically by the editor.""",
                 if isinstance(cap, dict):
                     preview = _render_preview(_caption_to_boxes(cap), width, height, guid, background_opacity)
                     return io.NodeOutput(_dumps(cap), preview, width, height, guid)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 pass
 
         boxes = _parse_json_list(elements_data)
