@@ -12,7 +12,9 @@ const EMPTY_STORES = () => ({ characters: {}, objects: {}, scenes: {} });
 
 export async function loadStores() {
   try {
-    const resp = await fetch(STORE_API);
+    const resp = await fetch(STORE_API, {
+      signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+    });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     return {
@@ -31,6 +33,7 @@ export async function saveStoreEntry(bucket, name, data) {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+    signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
   });
   if (!resp.ok) {
     let msg = `HTTP ${resp.status}`;
