@@ -1,0 +1,41 @@
+{
+  "name": "comfyui-byae-ideogramtools",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ComfyUI custom node for Ideogram 4 prompt building",
+  "scripts": {
+    "lint": "eslint web/js/*.js"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0"
+  },
+  "eslintConfig": {
+    "env": {
+      "browser": true,
+      "es2021": true
+    },
+    "extends": "eslint:recommended",
+    "parserOptions": {
+      "ecmaVersion": "latest",
+      "sourceType": "module"
+    },
+    "rules": {
+      "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+      "no-undef": "error",
+      "no-constant-condition": "warn"
+    },
+    "globals": {
+      "window": "readonly",
+      "console": "readonly",
+      "document": "readonly",
+      "navigator": "readonly",
+      "alert": "readonly",
+      "Image": "readonly",
+      "requestAnimationFrame": "readonly",
+      "setTimeout": "readonly",
+      "clearTimeout": "readonly",
+      "WheelEvent": "readonly",
+      "AbortSignal": "readonly"
+    }
+  }
+}

@@ -56,8 +56,14 @@ jobs:
       with:
         node-version: '20'
     
+    - name: Install dependencies
+      run: npm install
+    
     - name: Check JavaScript syntax
       run: |
         node -c web/js/ideogram4_prompt_builder_enhanced.js
         node -c web/js/ideogram4_shared.js
         node -c web/js/utility.js
+    
+    - name: Lint JavaScript
+      run: npm run lint

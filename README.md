@@ -59,7 +59,16 @@ This is usually harmless. The store routes register on startup, and if they fail
 
 **Store location:** Character, object, and scene presets are stored in `<ComfyUI user directory>/byae-ideogram-tools/` as JSON files (`characters.json`, `objects.json`, `scenes.json`).
 
+**Unicode support:** Preset names can include Unicode characters (e.g. 角色, Персонаж, Émilie). Names must start with a letter, number, or underscore, and can contain letters, numbers, spaces, underscores, and hyphens (up to 64 characters).
+
 **Corrupt file recovery:** If a store file becomes corrupted (invalid JSON), it will be automatically moved to a backup file named `<bucket>.json.corrupt-<timestamp>` and the bucket will be treated as empty. Other buckets continue to work normally, and saves to the recovered bucket will work immediately.
+
+### Failed to save character/object/scene
+
+- Check the browser console (F12) for detailed error messages
+- Verify the name meets requirements: starts with letter/number/underscore, contains only letters, numbers, spaces, underscores, or hyphens
+- Ensure the ComfyUI user directory is writable
+- Try a shorter name (max 64 characters)
 
 ### Background image not updating
 
@@ -75,6 +84,31 @@ Node names and internal IDs are stable. If a workflow breaks, check:
 - No custom modifications were made to widget names
 
 For bugs or feature requests, please open an issue on GitHub.
+
+## Development
+
+### Running Tests
+
+```bash
+# Install test dependencies
+pip install pytest pytest-asyncio aiohttp
+
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific test file
+python -m pytest tests/test_store.py -v
+```
+
+### JavaScript Linting
+
+```bash
+# Install dependencies
+npm install
+
+# Run linter
+npm run lint
+```
 
 ## API
 

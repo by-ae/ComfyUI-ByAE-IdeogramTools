@@ -873,13 +873,17 @@ app.registerExtension({
               node._activeIdx = node._boxes.length ? 0 : -1;
               node._selected = node._boxes.length ? new Set([0]) : new Set();
             }
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            console.error("ByAE Ideogram: failed to parse elements_data:", e);
+          }
         }
         if (p.byae_style_palette_data) {
           try {
             const sp = JSON.parse(p.byae_style_palette_data);
             if (Array.isArray(sp)) node._stylePalette = sp.filter((c) => typeof c === "string");
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            console.error("ByAE Ideogram: failed to parse style_palette_data:", e);
+          }
         }
         return ui;
       }
@@ -1132,7 +1136,7 @@ app.registerExtension({
         }
       }
 
-      function pickForSelection(mN, cycle, shiftKey) {
+      function pickForSelection(mN, cycle, _shiftKey) {
         const cands = boxesAt(mN);
         if (!cands.length) return null;
         const ah = cands.find((c) => c.index === node._activeIdx && c.mode !== "move");
@@ -1803,7 +1807,12 @@ app.registerExtension({
 
       async function doImport() {
         let cap = null, txt = "";
-        try { txt = (await navigator.clipboard.readText() || "").trim(); cap = tryParseCaption(txt); } catch (e) {}
+        try {
+          txt = (await navigator.clipboard.readText() || "").trim();
+          cap = tryParseCaption(txt);
+        } catch (e) {
+          console.warn("ByAE Ideogram: clipboard read failed:", e);
+        }
         if (!cap) {
           txt = (window.prompt("Paste Ideogram 4 caption JSON:", "") || "").trim();
           cap = tryParseCaption(txt);
@@ -1875,7 +1884,9 @@ app.registerExtension({
           if (!name) return;
           try {
             await saveStoreEntry("scenes", name, captureSceneState());
+            console.log("ByAE Ideogram: saved scene:", name);
           } catch (e) {
+            console.error("ByAE Ideogram: failed to save scene:", e);
             alert("Failed to save scene: " + e.message);
           }
         });
@@ -1883,7 +1894,14 @@ app.registerExtension({
 
       sceneLoadBtn.addEventListener("mousedown", (e) => e.stopPropagation());
       sceneLoadBtn.addEventListener("click", async () => {
-        const stores = await loadStores();
+        let stores;
+        try {
+          stores = await loadStores();
+        } catch (e) {
+          console.error("ByAE Ideogram: failed to load stores:", e);
+          alert("Failed to load scene stores: " + e.message);
+          return;
+        }
         const names = Object.keys(stores.scenes).sort();
         if (!names.length) { alert("No saved scenes."); return; }
         showModal("Load Scene", [
@@ -1967,7 +1985,9 @@ app.registerExtension({
           await saveStoreEntry(bucket, name, boxPayload(b));
           b.storeRef = { type, name };
           commit();
+          console.log("ByAE Ideogram: saved", type, name);
         } catch (e) {
+          console.error("ByAE Ideogram: failed to save:", e);
           alert("Failed to save: " + e.message);
         }
       }
@@ -1995,7 +2015,14 @@ app.registerExtension({
       }
 
       async function doLoadStore() {
-        const stores = await loadStores();
+        let stores;
+        try {
+          stores = await loadStores();
+        } catch (e) {
+          console.error("ByAE Ideogram: failed to load stores:", e);
+          alert("Failed to load character/object stores: " + e.message);
+          return;
+        }
         showCharObjLoadModal(stores, ({ type, name }) => {
           const bucket = type === "object" ? stores.objects : stores.characters;
           const data = bucket[name];
@@ -2158,7 +2185,7 @@ app.registerExtension({
           const data = await resp.json();
           if (data.exists && data.url) applyBgFromDetail(data);
         } catch (e) {
-          bgLog("initial bg check error", e);
+          console.warn("ByAE Ideogram: initial bg check failed:", e);
         }
       }
 

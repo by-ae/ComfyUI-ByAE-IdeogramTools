@@ -1,6 +1,7 @@
+node_modules/
+*.log
+.eslintcache
 __pycache__/
-*.py[cod]
-*.code-workspace
-.history/
-.vscode/
-.claude/
+*.pyc
+*.pyo
+.pytest_cache/

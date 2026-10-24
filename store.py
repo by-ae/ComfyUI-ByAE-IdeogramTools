@@ -1,24 +1,45 @@
 """File-based character/object/scene storage in ComfyUI user data."""
 
+import contextlib
 import json
 import logging
 import os
 import re
+import tempfile
 import time
 
 import folder_paths
 
 _STORE_SUBDIR = "byae-ideogram-tools"
 _BUCKETS = frozenset({"characters", "objects", "scenes"})
-_SAFE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_\- ]{0,63}$")
+# Allow Unicode letters, numbers, spaces, underscores, and hyphens
+# Must start with a letter or number (Unicode-aware)
+_SAFE_NAME = re.compile(r"^[\w][\w\- ]{0,63}$", re.UNICODE)
 
 logger = logging.getLogger(__name__)
+
+# File locks for concurrent write protection (one lock per bucket)
+_BUCKET_LOCKS = {}
 
 
 def _store_dir() -> str:
     path = os.path.join(folder_paths.get_user_directory(), _STORE_SUBDIR)
     os.makedirs(path, exist_ok=True)
     return path
+
+
+@contextlib.contextmanager
+def _bucket_lock(bucket: str):
+    """Thread-safe lock for bucket writes to prevent concurrent write corruption."""
+    import threading
+    if bucket not in _BUCKET_LOCKS:
+        _BUCKET_LOCKS[bucket] = threading.Lock()
+    lock = _BUCKET_LOCKS[bucket]
+    lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 def _bucket_path(bucket: str) -> str:
@@ -57,15 +78,24 @@ def _read_json(path: str) -> dict:
 
 
 def _write_json(path: str, data: dict) -> None:
-    tmp = path + ".tmp"
+    # Use a temporary file with a unique name to avoid conflicts during concurrent writes
+    temp_fd, tmp = tempfile.mkstemp(
+        dir=os.path.dirname(path),
+        prefix=".tmp_",
+        suffix=".json"
+    )
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
     except Exception:
         # Clean up temp file on write failure
+        try:
+            os.close(temp_fd)
+        except (OSError, ValueError):
+            pass
         if os.path.exists(tmp):
             try:
                 os.remove(tmp)
@@ -85,17 +115,19 @@ def load_all() -> dict:
 def save_entry(bucket: str, name: str, data) -> None:
     name = _validate_name(name)
     path = _bucket_path(bucket)
-    store = _read_json(path)
-    store[name] = data
-    _write_json(path, store)
+    with _bucket_lock(bucket):
+        store = _read_json(path)
+        store[name] = data
+        _write_json(path, store)
 
 
 def delete_entry(bucket: str, name: str) -> bool:
     name = _validate_name(name)
     path = _bucket_path(bucket)
-    store = _read_json(path)
-    if name not in store:
-        return False
-    del store[name]
-    _write_json(path, store)
-    return True
+    with _bucket_lock(bucket):
+        store = _read_json(path)
+        if name not in store:
+            return False
+        del store[name]
+        _write_json(path, store)
+        return True

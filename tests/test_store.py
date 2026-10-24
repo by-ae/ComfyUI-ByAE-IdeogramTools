@@ -40,8 +40,6 @@ class TestStore(unittest.TestCase):
         with self.assertRaises(ValueError):
             _validate_name(" ")
         with self.assertRaises(ValueError):
-            _validate_name("_starts_with_underscore")
-        with self.assertRaises(ValueError):
             _validate_name("-starts-with-dash")
         with self.assertRaises(ValueError):
             _validate_name("has/slash")
@@ -163,6 +161,55 @@ class TestStore(unittest.TestCase):
         bucket = load_bucket("scenes")
         self.assertIn("NewScene", bucket)
         self.assertEqual(bucket["NewScene"]["data"], "value")
+
+    def test_unicode_character_names(self):
+        # Test that Unicode names work correctly
+        save_entry("characters", "角色123", {"desc": "Japanese character"})
+        save_entry("characters", "Персонаж", {"desc": "Russian character"})
+        save_entry("characters", "Émilie", {"desc": "French character"})
+        
+        bucket = load_bucket("characters")
+        self.assertIn("角色123", bucket)
+        self.assertIn("Персонаж", bucket)
+        self.assertIn("Émilie", bucket)
+        self.assertEqual(bucket["角色123"]["desc"], "Japanese character")
+        self.assertEqual(bucket["Персонаж"]["desc"], "Russian character")
+        self.assertEqual(bucket["Émilie"]["desc"], "French character")
+
+    def test_concurrent_write_safety(self):
+        # Test that concurrent writes don't corrupt the file
+        import threading
+        import time
+        
+        errors = []
+        
+        def writer(name, value):
+            try:
+                for i in range(10):
+                    save_entry("characters", name, {"iteration": i, "value": value})
+                    time.sleep(0.001)
+            except Exception as e:
+                errors.append((name, str(e)))
+        
+        threads = [
+            threading.Thread(target=writer, args=(f"char{i}", i))
+            for i in range(5)
+        ]
+        
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        
+        # Check no errors occurred
+        self.assertEqual(errors, [], f"Concurrent write errors: {errors}")
+        
+        # Verify all characters were saved
+        bucket = load_bucket("characters")
+        for i in range(5):
+            self.assertIn(f"char{i}", bucket)
+            self.assertIn("iteration", bucket[f"char{i}"])
+            self.assertEqual(bucket[f"char{i}"]["value"], i)
 
 
 if __name__ == "__main__":
