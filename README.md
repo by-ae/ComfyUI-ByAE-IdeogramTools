@@ -57,6 +57,10 @@ The builder outputs a structured JSON prompt compatible with Ideogram 4's API fo
 
 This is usually harmless. The store routes register on startup, and if they fail, character/object/scene save features may not work, but the builder itself will function normally. Check file permissions on your ComfyUI user directory.
 
+**Store location:** Character, object, and scene presets are stored in `<ComfyUI user directory>/byae-ideogram-tools/` as JSON files (`characters.json`, `objects.json`, `scenes.json`).
+
+**Corrupt file recovery:** If a store file becomes corrupted (invalid JSON), it will be automatically moved to a backup file named `<bucket>.json.corrupt-<timestamp>` and the bucket will be treated as empty. Other buckets continue to work normally, and saves to the recovered bucket will work immediately.
+
 ### Background image not updating
 
 - Verify the `guid` output from the builder is connected to Preview BG Update's `guid` input
@@ -71,6 +75,14 @@ Node names and internal IDs are stable. If a workflow breaks, check:
 - No custom modifications were made to widget names
 
 For bugs or feature requests, please open an issue on GitHub.
+
+## API
+
+The extension exposes HTTP routes for programmatic access to the character/object/scene store:
+
+- **GET** `/byae/ideogram/stores` — Load all stores (returns `{"characters": {...}, "objects": {...}, "scenes": {...}}`)
+- **PUT** `/byae/ideogram/stores/{bucket}/{name}` — Save an entry (body: JSON object; bucket: `characters`, `objects`, or `scenes`)
+- **DELETE** `/byae/ideogram/stores/{bucket}/{name}` — Delete an entry (returns 404 if not found, 200 on success)
 
 ## License
 
