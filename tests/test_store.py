@@ -104,6 +104,66 @@ class TestStore(unittest.TestCase):
         
         self.assertEqual(first_load["Persistent"], second_load["Persistent"])
 
+    def test_corrupt_json_creates_backup_and_returns_empty(self):
+        # Create a corrupt JSON file
+        bucket_path = os.path.join(self.temp_dir, "byae-ideogram-tools", "characters.json")
+        os.makedirs(os.path.dirname(bucket_path), exist_ok=True)
+        with open(bucket_path, "w") as f:
+            f.write("{invalid json content")
+        
+        # Loading should return empty dict and create backup
+        bucket = load_bucket("characters")
+        self.assertEqual(bucket, {})
+        
+        # Check that backup file was created
+        backup_files = [f for f in os.listdir(os.path.dirname(bucket_path)) 
+                       if f.startswith("characters.json.corrupt-")]
+        self.assertEqual(len(backup_files), 1)
+        
+        # Verify backup contains original corrupt content
+        backup_path = os.path.join(os.path.dirname(bucket_path), backup_files[0])
+        with open(backup_path, "r") as f:
+            self.assertEqual(f.read(), "{invalid json content")
+        
+        # Verify original file no longer exists
+        self.assertFalse(os.path.exists(bucket_path))
+
+    def test_corrupt_file_does_not_affect_other_buckets(self):
+        # Save valid entry in objects bucket
+        save_entry("objects", "ValidObject", {"data": "test"})
+        
+        # Create corrupt characters file
+        bucket_path = os.path.join(self.temp_dir, "byae-ideogram-tools", "characters.json")
+        os.makedirs(os.path.dirname(bucket_path), exist_ok=True)
+        with open(bucket_path, "w") as f:
+            f.write("corrupted")
+        
+        # Load all should still work, with characters empty but objects intact
+        from store import load_all
+        stores = load_all()
+        
+        self.assertEqual(stores["characters"], {})
+        self.assertIn("ValidObject", stores["objects"])
+        self.assertEqual(stores["objects"]["ValidObject"]["data"], "test")
+
+    def test_save_works_after_corrupt_file_recovery(self):
+        # Create corrupt file
+        bucket_path = os.path.join(self.temp_dir, "byae-ideogram-tools", "scenes.json")
+        os.makedirs(os.path.dirname(bucket_path), exist_ok=True)
+        with open(bucket_path, "w") as f:
+            f.write("[not a dict]")
+        
+        # Load should recover
+        load_bucket("scenes")
+        
+        # Save should now work
+        save_entry("scenes", "NewScene", {"data": "value"})
+        
+        # Verify save succeeded
+        bucket = load_bucket("scenes")
+        self.assertIn("NewScene", bucket)
+        self.assertEqual(bucket["NewScene"]["data"], "value")
+
 
 if __name__ == "__main__":
     unittest.main()

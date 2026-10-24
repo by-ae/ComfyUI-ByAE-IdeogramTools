@@ -45,6 +45,21 @@ export async function saveStoreEntry(bucket, name, data) {
   }
 }
 
+export async function deleteStoreEntry(bucket, name) {
+  const resp = await fetch(`${STORE_API}/${bucket}/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+    signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
+  });
+  if (!resp.ok) {
+    let msg = `HTTP ${resp.status}`;
+    try {
+      const err = await resp.json();
+      if (err?.error) msg = err.error;
+    } catch (e) { /* ignore */ }
+    throw new Error(msg);
+  }
+}
+
 export function findBuildersOnGraph(graph) {
   if (!graph?._nodes) return [];
   return graph._nodes.filter((n) => nodeClassName(n) === BUILDER_CLASS);

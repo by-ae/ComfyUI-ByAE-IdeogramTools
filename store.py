@@ -1,14 +1,18 @@
 """File-based character/object/scene storage in ComfyUI user data."""
 
 import json
+import logging
 import os
 import re
+import time
 
 import folder_paths
 
 _STORE_SUBDIR = "byae-ideogram-tools"
 _BUCKETS = frozenset({"characters", "objects", "scenes"})
 _SAFE_NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_\- ]{0,63}$")
+
+logger = logging.getLogger(__name__)
 
 
 def _store_dir() -> str:
@@ -33,18 +37,41 @@ def _validate_name(name: str) -> str:
 def _read_json(path: str) -> dict:
     if not os.path.isfile(path):
         return {}
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    return data if isinstance(data, dict) else {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        # Move corrupt file aside and treat bucket as empty
+        timestamp = int(time.time())
+        backup_path = f"{path}.corrupt-{timestamp}"
+        logger.warning(
+            "ByAE Ideogram: corrupt store file %s (%s), moving to %s",
+            path, e, backup_path
+        )
+        try:
+            os.rename(path, backup_path)
+        except OSError as rename_err:
+            logger.error("ByAE Ideogram: failed to backup corrupt file: %s", rename_err)
+        return {}
 
 
 def _write_json(path: str, data: dict) -> None:
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        # Clean up temp file on write failure
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        raise
 
 
 def load_bucket(bucket: str) -> dict:

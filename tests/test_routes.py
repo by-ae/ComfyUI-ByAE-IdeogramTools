@@ -187,6 +187,57 @@ class TestRoutes(AioHTTPTestCase):
         self.assertFalse(data["exists"])
         self.assertIn("error", data)
 
+    async def test_delete_store_entry_success(self):
+        # Pre-populate store
+        store.save_entry("characters", "ToDelete", {"desc": "Will be deleted"})
+        
+        request = MagicMock(spec=web.Request)
+        request.match_info = {"bucket": "characters", "name": "ToDelete"}
+        
+        response = await routes.delete_store_entry(request)
+        
+        self.assertEqual(response.status, 200)
+        data = json.loads(response.body)
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["bucket"], "characters")
+        self.assertEqual(data["name"], "ToDelete")
+        
+        # Verify it was deleted
+        bucket = store.load_bucket("characters")
+        self.assertNotIn("ToDelete", bucket)
+
+    async def test_delete_store_entry_not_found(self):
+        request = MagicMock(spec=web.Request)
+        request.match_info = {"bucket": "objects", "name": "DoesNotExist"}
+        
+        response = await routes.delete_store_entry(request)
+        
+        self.assertEqual(response.status, 404)
+        data = json.loads(response.body)
+        self.assertIn("error", data)
+        self.assertIn("not found", data["error"].lower())
+
+    async def test_delete_store_entry_invalid_bucket(self):
+        request = MagicMock(spec=web.Request)
+        request.match_info = {"bucket": "invalid_bucket", "name": "Test"}
+        
+        response = await routes.delete_store_entry(request)
+        
+        self.assertEqual(response.status, 400)
+        data = json.loads(response.body)
+        self.assertIn("error", data)
+        self.assertIn("Invalid bucket", data["error"])
+
+    async def test_delete_store_entry_invalid_name(self):
+        request = MagicMock(spec=web.Request)
+        request.match_info = {"bucket": "scenes", "name": ""}
+        
+        response = await routes.delete_store_entry(request)
+        
+        self.assertEqual(response.status, 400)
+        data = json.loads(response.body)
+        self.assertIn("error", data)
+
 
 if __name__ == "__main__":
     unittest.main()
