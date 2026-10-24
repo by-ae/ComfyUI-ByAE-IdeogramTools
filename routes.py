@@ -41,6 +41,25 @@ async def put_store_entry(request: web.Request) -> web.Response:
         return web.json_response({"error": "Failed to save"}, status=500)
 
 
+async def delete_store_entry(request: web.Request) -> web.Response:
+    bucket = request.match_info.get("bucket", "")
+    name = request.match_info.get("name", "")
+    if bucket not in ("characters", "objects", "scenes"):
+        return web.json_response({"error": "Invalid bucket"}, status=400)
+    if not name or len(name) > 128:
+        return web.json_response({"error": "Invalid or missing name"}, status=400)
+    try:
+        deleted = store.delete_entry(bucket, name)
+        if not deleted:
+            return web.json_response({"error": "Entry not found"}, status=404)
+        return web.json_response({"ok": True, "bucket": bucket, "name": name})
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    except Exception:
+        logger.exception("ByAE Ideogram: failed to delete store entry")
+        return web.json_response({"error": "Failed to delete"}, status=500)
+
+
 async def get_bg_stat(request: web.Request) -> web.Response:
     guid = request.match_info.get("guid", "")
     try:
@@ -80,5 +99,6 @@ def register_routes(app) -> None:
     app.add_routes([
         web.get("/byae/ideogram/stores", get_stores),
         web.put("/byae/ideogram/stores/{bucket}/{name}", put_store_entry),
+        web.delete("/byae/ideogram/stores/{bucket}/{name}", delete_store_entry),
         web.get("/byae/ideogram/bg/{guid}/stat", get_bg_stat),
     ])
