@@ -1136,7 +1136,7 @@ app.registerExtension({
         }
       }
 
-      function pickForSelection(mN, cycle, shiftKey) {
+      function pickForSelection(mN, cycle, _shiftKey) {
         const cands = boxesAt(mN);
         if (!cands.length) return null;
         const ah = cands.find((c) => c.index === node._activeIdx && c.mode !== "move");

@@ -555,7 +555,7 @@ export function watchImageInputs(node, inputName, onChange) {
         watchedWidgets.push({ widget: w, origCb });
       }
       const prevExecuted = srcNode.onExecuted;
-      srcNode.onExecuted = function (output) {
+      srcNode.onExecuted = function (_output) {
         const r = prevExecuted?.apply(this, arguments);
         setTimeout(() => onChange(resolve()), 60);
         return r;
