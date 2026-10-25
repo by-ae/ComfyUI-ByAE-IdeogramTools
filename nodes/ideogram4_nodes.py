@@ -26,8 +26,9 @@ try:
     from comfy_api.latest import io
 except ImportError as e:
     raise ImportError(
-        "ComfyUI-ByAE-IdeogramTools requires ComfyUI-KJNodes to be installed. "
-        "Please install it from https://github.com/kijai/ComfyUI-KJNodes. "
+        "ComfyUI-ByAE-IdeogramTools requires a recent version of ComfyUI "
+        "that includes the comfy_api.latest module. "
+        "Please update your ComfyUI installation. "
         f"Import error: {e}"
     ) from e
 
