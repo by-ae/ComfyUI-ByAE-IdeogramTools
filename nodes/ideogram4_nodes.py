@@ -312,11 +312,13 @@ def _caption_to_boxes(caption):
                 box.update(x=xmin / 1000.0, y=ymin / 1000.0,
                            w=(xmax - xmin) / 1000.0, h=(ymax - ymin) / 1000.0)
             except (TypeError, ValueError, ZeroDivisionError):
-                k = idx % 6
-                box.update(x=0.03 + k * 0.035, y=0.03 + k * 0.035, w=0.22, h=0.14, nobbox=True)
+                # Fallback: arrange in rows of 4, avoiding overlap
+                row, col = divmod(idx, 4)
+                box.update(x=0.02 + col * 0.25, y=0.02 + row * 0.17, w=0.22, h=0.14, nobbox=True)
         else:
-            k = idx % 6
-            box.update(x=0.03 + k * 0.035, y=0.03 + k * 0.035, w=0.22, h=0.14, nobbox=True)
+            # Fallback: arrange in rows of 4, avoiding overlap
+            row, col = divmod(idx, 4)
+            box.update(x=0.02 + col * 0.25, y=0.02 + row * 0.17, w=0.22, h=0.14, nobbox=True)
         boxes.append(box)
     return boxes
 
