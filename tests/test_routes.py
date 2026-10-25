@@ -60,7 +60,9 @@ class TestRoutes(AioHTTPTestCase):
     async def test_put_store_entry_success(self):
         request = MagicMock(spec=web.Request)
         request.match_info = {"bucket": "characters", "name": "Hero"}
+        request.content_length = 100
         request.json = AsyncMock(return_value={"desc": "Main character", "palette": ["#FF0000"]})
+        request.read = AsyncMock(return_value=b'{"desc": "Main character", "palette": ["#FF0000"]}')
         
         response = await routes.put_store_entry(request)
         
@@ -110,6 +112,8 @@ class TestRoutes(AioHTTPTestCase):
     async def test_put_store_entry_invalid_json(self):
         request = MagicMock(spec=web.Request)
         request.match_info = {"bucket": "characters", "name": "Test"}
+        request.content_length = 50
+        request.read = AsyncMock(return_value=b'not valid json')
         request.json = AsyncMock(side_effect=json.JSONDecodeError("", "", 0))
         
         response = await routes.put_store_entry(request)
@@ -122,6 +126,8 @@ class TestRoutes(AioHTTPTestCase):
     async def test_put_store_entry_non_object_body(self):
         request = MagicMock(spec=web.Request)
         request.match_info = {"bucket": "characters", "name": "Test"}
+        request.content_length = 50
+        request.read = AsyncMock(return_value=b'["array", "not", "object"]')
         request.json = AsyncMock(return_value=["array", "not", "object"])
         
         response = await routes.put_store_entry(request)
@@ -231,6 +237,60 @@ class TestRoutes(AioHTTPTestCase):
     async def test_delete_store_entry_invalid_name(self):
         request = MagicMock(spec=web.Request)
         request.match_info = {"bucket": "scenes", "name": ""}
+        
+        response = await routes.delete_store_entry(request)
+        
+        self.assertEqual(response.status, 400)
+        data = json.loads(response.body)
+        self.assertIn("error", data)
+
+    async def test_put_store_entry_payload_too_large(self):
+        """Test that oversized payloads are rejected."""
+        request = MagicMock(spec=web.Request)
+        request.match_info = {"bucket": "characters", "name": "BigChar"}
+        # Simulate a 20 MB payload
+        request.content_length = 20 * 1024 * 1024
+        
+        response = await routes.put_store_entry(request)
+        
+        self.assertEqual(response.status, 413)
+        data = json.loads(response.body)
+        self.assertIn("error", data)
+        self.assertIn("too large", data["error"].lower())
+
+    async def test_put_store_entry_invalid_name_chars(self):
+        """Test that names with path traversal attempts are rejected."""
+        request = MagicMock(spec=web.Request)
+        request.match_info = {"bucket": "characters", "name": "../../../evil"}
+        request.content_length = 100
+        request.json = AsyncMock(return_value={"desc": "test"})
+        request.read = AsyncMock(return_value=b'{"desc": "test"}')
+        
+        response = await routes.put_store_entry(request)
+        
+        self.assertEqual(response.status, 400)
+        data = json.loads(response.body)
+        self.assertIn("error", data)
+
+    async def test_put_store_entry_special_chars_rejected(self):
+        """Test that names with special characters are rejected."""
+        for bad_name in ["test<script>", "test\x00null", "test\n\nnewline"]:
+            request = MagicMock(spec=web.Request)
+            request.match_info = {"bucket": "objects", "name": bad_name}
+            request.content_length = 100
+            request.json = AsyncMock(return_value={"desc": "test"})
+            request.read = AsyncMock(return_value=b'{"desc": "test"}')
+            
+            response = await routes.put_store_entry(request)
+            
+            self.assertEqual(response.status, 400, f"Expected 400 for name: {repr(bad_name)}")
+            data = json.loads(response.body)
+            self.assertIn("error", data)
+
+    async def test_delete_store_entry_path_traversal(self):
+        """Test that path traversal attempts in DELETE are rejected."""
+        request = MagicMock(spec=web.Request)
+        request.match_info = {"bucket": "characters", "name": "../../etc/passwd"}
         
         response = await routes.delete_store_entry(request)
         
