@@ -22,7 +22,14 @@ def _bg_log(msg, *args):
     _BG_LOG.info("%s", line)
     print(line, flush=True)
 
-from comfy_api.latest import io
+try:
+    from comfy_api.latest import io
+except ImportError as e:
+    raise ImportError(
+        "ComfyUI-ByAE-IdeogramTools requires ComfyUI-KJNodes to be installed. "
+        "Please install it from https://github.com/kijai/ComfyUI-KJNodes. "
+        f"Import error: {e}"
+    ) from e
 
 PREVIEW_PALETTE = ["#46b4e6", "#e68246", "#82e646", "#e646b4", "#e6e646", "#46e6c8"]
 _FONT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fonts", "FreeMono.ttf")
@@ -305,11 +312,13 @@ def _caption_to_boxes(caption):
                 box.update(x=xmin / 1000.0, y=ymin / 1000.0,
                            w=(xmax - xmin) / 1000.0, h=(ymax - ymin) / 1000.0)
             except (TypeError, ValueError, ZeroDivisionError):
-                k = idx % 6
-                box.update(x=0.03 + k * 0.035, y=0.03 + k * 0.035, w=0.22, h=0.14, nobbox=True)
+                # Fallback: arrange in rows of 4, avoiding overlap
+                row, col = divmod(idx, 4)
+                box.update(x=0.02 + col * 0.25, y=0.02 + row * 0.17, w=0.22, h=0.14, nobbox=True)
         else:
-            k = idx % 6
-            box.update(x=0.03 + k * 0.035, y=0.03 + k * 0.035, w=0.22, h=0.14, nobbox=True)
+            # Fallback: arrange in rows of 4, avoiding overlap
+            row, col = divmod(idx, 4)
+            box.update(x=0.02 + col * 0.25, y=0.02 + row * 0.17, w=0.22, h=0.14, nobbox=True)
         boxes.append(box)
     return boxes
 

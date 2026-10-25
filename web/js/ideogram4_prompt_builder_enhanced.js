@@ -1744,8 +1744,11 @@ app.registerExtension({
           box.x = xmin / 1000; box.y = ymin / 1000;
           box.w = (xmax - xmin) / 1000; box.h = (ymax - ymin) / 1000;
         } else {
-          const k = (idx || 0) % 6;
-          box.x = 0.03 + k * 0.035; box.y = 0.03 + k * 0.035;
+          // Fallback: arrange in rows of 4, avoiding overlap
+          const i = idx || 0;
+          const row = Math.floor(i / 4);
+          const col = i % 4;
+          box.x = 0.02 + col * 0.25; box.y = 0.02 + row * 0.17;
           box.w = 0.22; box.h = 0.14; box.nobbox = true;
         }
         return box;

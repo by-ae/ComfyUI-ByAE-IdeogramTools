@@ -9,6 +9,9 @@ from .nodes.ideogram4_nodes import bg_temp_filename, bg_temp_path, sanitize_bg_g
 
 logger = logging.getLogger(__name__)
 
+# Maximum JSON payload size: 10 MB (generous for store entries)
+MAX_PAYLOAD_SIZE = 10 * 1024 * 1024
+
 
 async def get_stores(_request: web.Request) -> web.Response:
     try:
@@ -25,7 +28,29 @@ async def put_store_entry(request: web.Request) -> web.Response:
         return web.json_response({"error": "Invalid bucket"}, status=400)
     if not name or len(name) > 128:
         return web.json_response({"error": "Invalid or missing name"}, status=400)
+    
+    # Validate name using same regex as store.py for defense in depth
     try:
+        store._validate_name(name)
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    
+    # Check Content-Length to prevent oversized payloads
+    content_length = request.content_length
+    if content_length is not None and content_length > MAX_PAYLOAD_SIZE:
+        return web.json_response(
+            {"error": f"Payload too large (max {MAX_PAYLOAD_SIZE} bytes)"},
+            status=413
+        )
+    
+    try:
+        # Read with size limit for safety
+        body = await request.read()
+        if len(body) > MAX_PAYLOAD_SIZE:
+            return web.json_response(
+                {"error": f"Payload too large (max {MAX_PAYLOAD_SIZE} bytes)"},
+                status=413
+            )
         data = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON body"}, status=400)
@@ -48,6 +73,13 @@ async def delete_store_entry(request: web.Request) -> web.Response:
         return web.json_response({"error": "Invalid bucket"}, status=400)
     if not name or len(name) > 128:
         return web.json_response({"error": "Invalid or missing name"}, status=400)
+    
+    # Validate name using same regex as store.py for defense in depth
+    try:
+        store._validate_name(name)
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    
     try:
         deleted = store.delete_entry(bucket, name)
         if not deleted:

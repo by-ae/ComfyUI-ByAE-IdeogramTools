@@ -150,6 +150,42 @@ class TestPromptHelpers(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertTrue(result[0]["nobbox"])
 
+    def test_caption_to_boxes_many_missing_bbox_no_overlap(self):
+        """Test that many elements without bbox don't overlap (arrange in rows)."""
+        caption = {
+            "compositional_deconstruction": {
+                "elements": [{"type": "obj", "desc": f"element_{i}"} for i in range(12)]
+            }
+        }
+        boxes = _caption_to_boxes(caption)
+        self.assertEqual(len(boxes), 12)
+        
+        # Check that boxes are arranged in rows of 4 and don't overlap
+        for i, box in enumerate(boxes):
+            self.assertTrue(box.get("nobbox"))
+            expected_row = i // 4
+            expected_col = i % 4
+            # Row 0: y=0.02, Row 1: y=0.19, Row 2: y=0.36
+            expected_y = 0.02 + expected_row * 0.17
+            # Col 0: x=0.02, Col 1: x=0.27, Col 2: x=0.52, Col 3: x=0.77
+            expected_x = 0.02 + expected_col * 0.25
+            self.assertAlmostEqual(box["y"], expected_y, places=5)
+            self.assertAlmostEqual(box["x"], expected_x, places=5)
+        
+        # Verify no overlaps by checking each pair
+        for i in range(len(boxes)):
+            for j in range(i + 1, len(boxes)):
+                b1, b2 = boxes[i], boxes[j]
+                # Check if boxes overlap (with small margin for floating point)
+                overlap_x = (b1["x"] < b2["x"] + b2["w"] - 0.01 and 
+                           b1["x"] + b1["w"] > b2["x"] + 0.01)
+                overlap_y = (b1["y"] < b2["y"] + b2["h"] - 0.01 and 
+                           b1["y"] + b1["h"] > b2["y"] + 0.01)
+                if overlap_x and overlap_y:
+                    self.fail(f"Box {i} overlaps with box {j}: "
+                             f"b{i}=({b1['x']:.3f},{b1['y']:.3f},{b1['w']:.3f},{b1['h']:.3f}) "
+                             f"b{j}=({b2['x']:.3f},{b2['y']:.3f},{b2['w']:.3f},{b2['h']:.3f})")
+
     def test_caption_to_boxes_empty(self):
         result = _caption_to_boxes({})
         self.assertEqual(result, [])

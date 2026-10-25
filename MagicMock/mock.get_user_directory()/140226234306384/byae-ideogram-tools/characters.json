@@ -1,0 +1,11 @@
+{
+  "TestChar": {
+    "desc": "A test"
+  },
+  "Hero": {
+    "desc": "Main character",
+    "palette": [
+      "#FF0000"
+    ]
+  }
+}
