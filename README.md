@@ -27,19 +27,14 @@ I may add other Ideogram 4 tools here in future, hence the name.
 
 ## Installation
 
-1. Install [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes) (required dependency):
+1. Clone into `ComfyUI/custom_nodes/`:
 ```bash
-# In ComfyUI/custom_nodes directory
-git clone https://github.com/kijai/ComfyUI-KJNodes.git
-```
-
-2. Clone this repository into `ComfyUI/custom_nodes/`:
-```bash
-# In ComfyUI/custom_nodes directory
+# open a terminal in the ComfyUI/custom_nodes directory
 git clone https://github.com/by-ae/ComfyUI-ByAE-IdeogramTools.git
 ```
+2. Restart ComfyUI
 
-3. Restart ComfyUI
+**ComfyUI-KJNodes does not need to be installed.**
 
 ## Usage
 
@@ -54,10 +49,10 @@ The builder outputs a structured JSON prompt compatible with Ideogram 4's API fo
 
 ### Nodes don't appear in the menu
 
-- Ensure ComfyUI-KJNodes is installed first (required dependency)
 - Ensure ComfyUI restarted completely after cloning
-- Check the ComfyUI console for import errors (look for "requires ComfyUI-KJNodes" message)
+- Check the ComfyUI console for import errors
 - Verify the folder is named `ComfyUI-ByAE-IdeogramTools` (not `ComfyUI-ByAE-IdeogramTools-main`)
+- Make sure you are running a recent version of ComfyUI (the comfy_api module is required)
 
 ### "Failed to load stores" or route errors in console
 
