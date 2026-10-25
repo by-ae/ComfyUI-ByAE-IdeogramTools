@@ -22,7 +22,14 @@ def _bg_log(msg, *args):
     _BG_LOG.info("%s", line)
     print(line, flush=True)
 
-from comfy_api.latest import io
+try:
+    from comfy_api.latest import io
+except ImportError as e:
+    raise ImportError(
+        "ComfyUI-ByAE-IdeogramTools requires ComfyUI-KJNodes to be installed. "
+        "Please install it from https://github.com/kijai/ComfyUI-KJNodes. "
+        f"Import error: {e}"
+    ) from e
 
 PREVIEW_PALETTE = ["#46b4e6", "#e68246", "#82e646", "#e646b4", "#e6e646", "#46e6c8"]
 _FONT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fonts", "FreeMono.ttf")
