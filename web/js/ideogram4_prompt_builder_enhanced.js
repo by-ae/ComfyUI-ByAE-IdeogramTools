@@ -6,7 +6,7 @@ import {
 import {
   loadStores, saveStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
-import { elementToRegion, regionCoordsFinite } from "./caption_layout.js";
+import { cleanPalette, elementToRegion, regionCoordsFinite } from "./caption_layout.js";
 
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
@@ -1658,8 +1658,6 @@ app.registerExtension({
         return widgetString(findW(name)?.value);
       }
 
-      function cleanPalette(arr) { return (arr || []).filter((c) => c).map((c) => c.toUpperCase()); }
-
       function normBboxJS(b) {
         const c = (v) => Math.max(0, Math.min(1000, Math.round(v * 1000)));
         let ymin = c(b.y), xmin = c(b.x), ymax = c(b.y + b.h), xmax = c(b.x + b.w);
@@ -1677,7 +1675,7 @@ app.registerExtension({
           const sd = { aesthetics: getW("aesthetics"), lighting: getW("lighting") };
           if (kind === "photo") { sd.photo = getW("style.photo"); sd.medium = getW("medium"); }
           else { sd.medium = getW("medium"); sd.art_style = getW("style.art_style"); }
-          const pal = cleanPalette(node._stylePalette);
+          const pal = cleanPalette(node._stylePalette, MAX_STYLE_COLORS);
           if (pal.length) sd.color_palette = pal;
           cap.style_description = sd;
         }
@@ -1687,7 +1685,7 @@ app.registerExtension({
           if (!b.nobbox) el.bbox = normBboxJS(b);
           if (etype === "text") el.text = b.text || "";
           el.desc = b.desc || "";
-          const pal = cleanPalette(b.palette).slice(0, MAX_ELEM_COLORS);
+          const pal = cleanPalette(b.palette, MAX_ELEM_COLORS);
           if (pal.length) el.color_palette = pal;
           return el;
         });

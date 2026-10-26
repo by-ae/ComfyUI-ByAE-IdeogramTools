@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  cleanPalette,
   elementToRegion,
   fallbackRegion,
   ideogramBboxToRect,
@@ -69,5 +70,21 @@ describe("ideogram bbox import", () => {
     assert.equal(regionCoordsFinite({ x: 0.1, y: 0.2, w: 0.3, h: 0.4 }), true);
     assert.equal(regionCoordsFinite({ x: NaN, y: 0.2, w: 0.3, h: 0.4 }), false);
     assert.equal(regionCoordsFinite({ x: 0.1, y: 0.2, w: 0.3 }), false);
+  });
+});
+
+describe("color palettes", () => {
+  it("uppercases #RRGGBB, expands #RGB, and drops values Ideogram rejects", () => {
+    assert.deepEqual(
+      cleanPalette([null, "", "red", "#fff", "#aabbcc", 1, true, "#12"]),
+      ["#FFFFFF", "#AABBCC"],
+    );
+  });
+
+  it("stops at the caller limit", () => {
+    const colors = Array.from({ length: 20 }, (_, i) => `#${i.toString(16).padStart(6, "0")}`);
+    assert.equal(cleanPalette(colors, 5).length, 5);
+    assert.equal(cleanPalette(colors, 16).length, 16);
+    assert.deepEqual(cleanPalette(colors, 2), ["#000000", "#000001"]);
   });
 });

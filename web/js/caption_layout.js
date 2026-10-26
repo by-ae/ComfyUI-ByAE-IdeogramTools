@@ -65,3 +65,26 @@ export function elementToRegion(el, idx) {
 export function regionCoordsFinite(b) {
   return !!b && [b.x, b.y, b.w, b.h].every((n) => typeof n === "number" && Number.isFinite(n));
 }
+
+const HEX6 = /^#[0-9A-F]{6}$/;
+const HEX3 = /^#[0-9A-F]{3}$/;
+
+/** Ideogram 4 accepts uppercase #RRGGBB. #RGB is expanded; anything else is dropped. */
+export function normalizeHex(color) {
+  if (typeof color !== "string") return null;
+  const text = color.trim().toUpperCase();
+  if (HEX6.test(text)) return text;
+  if (HEX3.test(text)) return "#" + text.slice(1).split("").map((ch) => ch + ch).join("");
+  return null;
+}
+
+export function cleanPalette(colors, limit) {
+  const out = [];
+  for (const color of colors || []) {
+    const hex = normalizeHex(color);
+    if (!hex) continue;
+    out.push(hex);
+    if (limit != null && out.length >= limit) break;
+  }
+  return out;
+}

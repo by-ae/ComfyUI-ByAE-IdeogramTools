@@ -68,6 +68,16 @@ class TestPromptHelpers(unittest.TestCase):
         result = _palette(colors)
         self.assertEqual(result, ["#FF0000", "#00FF00"])
 
+    def test_palette_drops_invalid_and_expands_short_hex(self):
+        colors = [None, "", "red", "#fff", "#aabbcc", 1, True, "#12"]
+        self.assertEqual(_palette(colors), ["#FFFFFF", "#AABBCC"])
+        self.assertEqual(_palette(None), [])
+
+    def test_palette_respects_ideogram_limits(self):
+        colors = ["#{:06X}".format(i) for i in range(20)]
+        self.assertEqual(len(_palette(colors, 16)), 16)
+        self.assertEqual(_palette(colors, 5), ["#{:06X}".format(i) for i in range(5)])
+
     def test_dumps_string(self):
         result = _dumps("hello")
         self.assertEqual(result, '"hello"')

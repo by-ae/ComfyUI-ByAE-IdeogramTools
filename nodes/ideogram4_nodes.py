@@ -284,10 +284,40 @@ def _norm_bbox(box):
     return [ymin, xmin, ymax, xmax]
 
 
-def _palette(colors):
+# Ideogram 4 captions accept uppercase #RRGGBB only: 16 style colors, 5 per element.
+# https://github.com/ideogram-oss/ideogram4/blob/main/docs/prompting.md
+_HEX6 = re.compile(r"^#[0-9A-F]{6}$")
+_HEX3 = re.compile(r"^#[0-9A-F]{3}$")
+STYLE_PALETTE_MAX = 16
+ELEMENT_PALETTE_MAX = 5
+
+
+def _normalize_hex(color):
+    """Return an uppercase #RRGGBB color, expanding #RGB, or None if invalid."""
+    if not isinstance(color, str):
+        return None
+    text = color.strip().upper()
+    if _HEX6.match(text):
+        return text
+    if _HEX3.match(text):
+        return "#" + "".join(ch * 2 for ch in text[1:])
+    return None
+
+
+def _palette(colors, limit=None):
     if isinstance(colors, dict):
-        colors = colors.values()
-    return [c.upper() for c in colors if c]
+        colors = list(colors.values())
+    elif not colors:
+        return []
+    out = []
+    for color in colors:
+        hex_color = _normalize_hex(color)
+        if not hex_color:
+            continue
+        out.append(hex_color)
+        if limit is not None and len(out) >= limit:
+            break
+    return out
 
 
 def _dumps(v, lvl=0):
@@ -502,7 +532,7 @@ folder and picked up automatically by the editor.""",
             else:
                 sd["medium"] = medium
                 sd["art_style"] = style.get("art_style", "")
-            palette = _palette(_parse_json_list(style_palette_data))
+            palette = _palette(_parse_json_list(style_palette_data), STYLE_PALETTE_MAX)
             if palette:
                 sd["color_palette"] = palette
             caption["style_description"] = sd
@@ -518,9 +548,9 @@ folder and picked up automatically by the editor.""",
             if etype == "text":
                 elem["text"] = box.get("text", "")
             elem["desc"] = box.get("desc", "")
-            palette = _palette(box.get("palette", []))
+            palette = _palette(box.get("palette", []), ELEMENT_PALETTE_MAX)
             if palette:
-                elem["color_palette"] = palette[:5]
+                elem["color_palette"] = palette
             elements.append(elem)
 
         caption["compositional_deconstruction"] = {
