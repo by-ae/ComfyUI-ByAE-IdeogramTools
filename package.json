@@ -2,6 +2,7 @@
   "name": "comfyui-byae-ideogramtools",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "ComfyUI custom node for Ideogram 4 prompt building",
   "scripts": {
     "lint": "eslint web/js/*.js"

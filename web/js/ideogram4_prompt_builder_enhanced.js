@@ -6,6 +6,7 @@ import {
 import {
   loadStores, saveStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
+import { elementToRegion, regionCoordsFinite } from "./caption_layout.js";
 
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
@@ -869,7 +870,9 @@ app.registerExtension({
           try {
             const parsed = JSON.parse(p.byae_elements_data);
             if (Array.isArray(parsed)) {
-              node._boxes = parsed.filter((b) => b && typeof b.x === "number");
+              node._boxes = parsed
+                .filter(regionCoordsFinite)
+                .map((b) => normalizeBoxCoords(b));
               node._activeIdx = node._boxes.length ? 0 : -1;
               node._selected = node._boxes.length ? new Set([0]) : new Set();
             }
@@ -1732,26 +1735,7 @@ app.registerExtension({
       }
 
       function bboxElemToBox(el, idx) {
-        if (!el || typeof el !== "object") return null;
-        const box = {
-          type: el.type === "text" ? "text" : "obj",
-          text: el.text || "", desc: el.desc || "",
-          palette: Array.isArray(el.color_palette) ? el.color_palette.slice() : [],
-        };
-        const bb = el.bbox;
-        if (Array.isArray(bb) && bb.length === 4) {
-          const [ymin, xmin, ymax, xmax] = bb;
-          box.x = xmin / 1000; box.y = ymin / 1000;
-          box.w = (xmax - xmin) / 1000; box.h = (ymax - ymin) / 1000;
-        } else {
-          // Fallback: arrange in rows of 4, avoiding overlap
-          const i = idx || 0;
-          const row = Math.floor(i / 4);
-          const col = i % 4;
-          box.x = 0.02 + col * 0.25; box.y = 0.02 + row * 0.17;
-          box.w = 0.22; box.h = 0.14; box.nobbox = true;
-        }
-        return box;
+        return elementToRegion(el, idx);
       }
 
       function remapImportedBoxes(boxes, importOpts = { source: "stretch" }) {

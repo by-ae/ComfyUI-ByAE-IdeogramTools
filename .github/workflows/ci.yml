@@ -67,3 +67,6 @@ jobs:
     
     - name: Lint JavaScript
       run: npm run lint
+
+    - name: Test caption layout helpers
+      run: node --test tests/caption_layout.test.js

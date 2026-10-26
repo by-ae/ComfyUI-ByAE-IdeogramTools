@@ -139,6 +139,70 @@ class TestPromptHelpers(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertTrue(result[0]["nobbox"])
 
+    def test_caption_to_boxes_inverted_bbox_is_normalized(self):
+        caption = {
+            "compositional_deconstruction": {
+                "elements": [
+                    {"type": "obj", "desc": "flipped", "bbox": [400, 300, 100, 200]}
+                ]
+            }
+        }
+        result = _caption_to_boxes(caption)
+        self.assertNotIn("nobbox", result[0])
+        self.assertAlmostEqual(result[0]["x"], 0.2)
+        self.assertAlmostEqual(result[0]["y"], 0.1)
+        self.assertAlmostEqual(result[0]["w"], 0.1)
+        self.assertAlmostEqual(result[0]["h"], 0.3)
+
+    def test_caption_to_boxes_out_of_range_bbox_is_clamped(self):
+        caption = {
+            "compositional_deconstruction": {
+                "elements": [
+                    {"type": "obj", "desc": "huge", "bbox": [-100, -50, 1500, 2000]}
+                ]
+            }
+        }
+        result = _caption_to_boxes(caption)
+        self.assertNotIn("nobbox", result[0])
+        self.assertAlmostEqual(result[0]["x"], 0.0)
+        self.assertAlmostEqual(result[0]["y"], 0.0)
+        self.assertAlmostEqual(result[0]["w"], 1.0)
+        self.assertAlmostEqual(result[0]["h"], 1.0)
+
+    def test_caption_to_boxes_numeric_strings(self):
+        caption = {
+            "compositional_deconstruction": {
+                "elements": [
+                    {"type": "text", "text": "Hi", "desc": "d", "bbox": ["100", "200", "300", "400"]}
+                ]
+            }
+        }
+        result = _caption_to_boxes(caption)
+        self.assertNotIn("nobbox", result[0])
+        self.assertAlmostEqual(result[0]["x"], 0.2)
+        self.assertAlmostEqual(result[0]["y"], 0.1)
+        self.assertAlmostEqual(result[0]["w"], 0.2)
+        self.assertAlmostEqual(result[0]["h"], 0.2)
+
+    def test_caption_to_boxes_non_numeric_bbox_keeps_grid_index(self):
+        caption = {
+            "compositional_deconstruction": {
+                "elements": [
+                    {"type": "obj", "desc": "ok", "bbox": [0, 0, 100, 100]},
+                    {"type": "obj", "desc": "bad", "bbox": ["nope", 0, 10, 10]},
+                    {"type": "obj", "desc": "bool", "bbox": [True, 0, 10, 10]},
+                ]
+            }
+        }
+        result = _caption_to_boxes(caption)
+        self.assertNotIn("nobbox", result[0])
+        self.assertTrue(result[1]["nobbox"])
+        self.assertTrue(result[2]["nobbox"])
+        self.assertAlmostEqual(result[1]["x"], 0.02 + 0.25)
+        self.assertAlmostEqual(result[1]["y"], 0.02)
+        self.assertAlmostEqual(result[2]["x"], 0.02 + 0.50)
+        self.assertAlmostEqual(result[2]["y"], 0.02)
+
     def test_caption_to_boxes_invalid_bbox(self):
         caption = {
             "compositional_deconstruction": {

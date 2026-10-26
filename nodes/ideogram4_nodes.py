@@ -319,6 +319,72 @@ def _parse_json_list(s):
     return []
 
 
+def _finite_coord(value):
+    """Return a finite float, or None when value is not a usable coordinate."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        value = text
+    elif not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in (float("inf"), float("-inf")):
+        return None
+    return number
+
+
+def _clamp_bbox_axis(value):
+    return max(0.0, min(1000.0, value))
+
+
+def _ideogram_bbox_to_rect(bbox):
+    """Map Ideogram [ymin, xmin, ymax, xmax] to x/y/w/h in 0-1 space.
+
+    Returns None when the four values are not finite coordinates. Inverted
+    axes are swapped and values are clamped to 0-1000, which is the range
+    documented for Ideogram 4 captions.
+    """
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return None
+    coords = [_finite_coord(v) for v in bbox]
+    if any(v is None for v in coords):
+        return None
+    ymin, xmin, ymax, xmax = coords
+    if ymin > ymax:
+        ymin, ymax = ymax, ymin
+    if xmin > xmax:
+        xmin, xmax = xmax, xmin
+    ymin = _clamp_bbox_axis(ymin)
+    xmin = _clamp_bbox_axis(xmin)
+    ymax = _clamp_bbox_axis(ymax)
+    xmax = _clamp_bbox_axis(xmax)
+    return {
+        "x": xmin / 1000.0,
+        "y": ymin / 1000.0,
+        "w": (xmax - xmin) / 1000.0,
+        "h": (ymax - ymin) / 1000.0,
+    }
+
+
+def _fallback_region(index):
+    # Rows of 4. Same spacing as the editor so pasted captions do not overlap.
+    safe_index = index if isinstance(index, int) and index >= 0 else 0
+    row, col = divmod(safe_index, 4)
+    return {
+        "x": 0.02 + col * 0.25,
+        "y": 0.02 + row * 0.17,
+        "w": 0.22,
+        "h": 0.14,
+        "nobbox": True,
+    }
+
+
 def _caption_to_boxes(caption):
     cd = caption.get("compositional_deconstruction", {}) if isinstance(caption, dict) else {}
     boxes = []
@@ -328,20 +394,11 @@ def _caption_to_boxes(caption):
         box = {"type": "text" if el.get("type") == "text" else "obj",
                "text": el.get("text", ""), "desc": el.get("desc", ""),
                "palette": el.get("color_palette", []) or []}
-        bb = el.get("bbox")
-        if isinstance(bb, list) and len(bb) == 4:
-            try:
-                ymin, xmin, ymax, xmax = bb
-                box.update(x=xmin / 1000.0, y=ymin / 1000.0,
-                           w=(xmax - xmin) / 1000.0, h=(ymax - ymin) / 1000.0)
-            except (TypeError, ValueError, ZeroDivisionError):
-                # Fallback: arrange in rows of 4, avoiding overlap
-                row, col = divmod(idx, 4)
-                box.update(x=0.02 + col * 0.25, y=0.02 + row * 0.17, w=0.22, h=0.14, nobbox=True)
+        rect = _ideogram_bbox_to_rect(el.get("bbox"))
+        if rect is None:
+            box.update(_fallback_region(idx))
         else:
-            # Fallback: arrange in rows of 4, avoiding overlap
-            row, col = divmod(idx, 4)
-            box.update(x=0.02 + col * 0.25, y=0.02 + row * 0.17, w=0.22, h=0.14, nobbox=True)
+            box.update(rect)
         boxes.append(box)
     return boxes
 

@@ -97,6 +97,9 @@ pip install pytest pytest-asyncio aiohttp
 # Run all tests
 python -m pytest tests/ -v
 
+# Region layout helpers (no Python dependencies)
+node --test tests/caption_layout.test.js
+
 # Run specific test file
 python -m pytest tests/test_store.py -v
 ```
