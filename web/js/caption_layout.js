@@ -88,3 +88,34 @@ export function cleanPalette(colors, limit) {
   }
   return out;
 }
+
+function clamp01(v) {
+  return Math.max(0, Math.min(1, v));
+}
+
+function normalizeBoxCoords(b) {
+  let x = b.x;
+  let y = b.y;
+  let w = b.w;
+  let h = b.h;
+  if (typeof x !== "number" || !Number.isFinite(x)) x = 0;
+  if (typeof y !== "number" || !Number.isFinite(y)) y = 0;
+  if (typeof w !== "number" || !Number.isFinite(w)) w = 0;
+  if (typeof h !== "number" || !Number.isFinite(h)) h = 0;
+  if (w < 0) { x += w; w = -w; }
+  if (h < 0) { y += h; h = -h; }
+  x = clamp01(x);
+  y = clamp01(y);
+  w = Math.min(w, 1 - x);
+  h = Math.min(h, 1 - y);
+  return { ...b, x, y, w: Math.max(0, w), h: Math.max(0, h) };
+}
+
+/** Move every region by the same nudge, then keep it inside the canvas. */
+export function offsetAddedRegions(boxes, nudge = 0.05) {
+  return (boxes || []).map((b) => normalizeBoxCoords({
+    ...b,
+    x: (typeof b.x === "number" && Number.isFinite(b.x) ? b.x : 0) + nudge,
+    y: (typeof b.y === "number" && Number.isFinite(b.y) ? b.y : 0) + nudge,
+  }));
+}

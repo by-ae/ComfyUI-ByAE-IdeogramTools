@@ -6,7 +6,9 @@ import {
 import {
   loadStores, saveStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
-import { cleanPalette, elementToRegion, regionCoordsFinite } from "./caption_layout.js";
+import {
+  cleanPalette, elementToRegion, offsetAddedRegions, regionCoordsFinite,
+} from "./caption_layout.js";
 
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
@@ -1836,13 +1838,10 @@ app.registerExtension({
       function applySceneState(state, replace) {
         if (replace) clearAll();
         const startIdx = node._boxes.length;
+        const incoming = (state.boxes || []).map(cloneBox);
+        const placed = replace ? incoming : offsetAddedRegions(incoming);
         const newIdxs = [];
-        for (const b of state.boxes || []) {
-          const nb = cloneBox(b);
-          if (!replace) {
-            nb.x = clamp01(nb.x + 0.05 * (newIdxs.length + 1));
-            nb.y = clamp01(nb.y + 0.05 * (newIdxs.length + 1));
-          }
+        for (const nb of placed) {
           node._boxes.push(nb);
           newIdxs.push(startIdx + newIdxs.length);
         }

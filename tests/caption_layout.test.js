@@ -6,6 +6,7 @@ import {
   elementToRegion,
   fallbackRegion,
   ideogramBboxToRect,
+  offsetAddedRegions,
   regionCoordsFinite,
 } from "../web/js/caption_layout.js";
 
@@ -86,5 +87,37 @@ describe("color palettes", () => {
     assert.equal(cleanPalette(colors, 5).length, 5);
     assert.equal(cleanPalette(colors, 16).length, 16);
     assert.deepEqual(cleanPalette(colors, 2), ["#000000", "#000001"]);
+  });
+});
+
+function near(actual, expected) {
+  assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not near ${expected}`);
+}
+
+describe("added scenes", () => {
+  it("shifts every region by the same amount so the layout stays intact", () => {
+    const boxes = [
+      { x: 0.1, y: 0.2, w: 0.2, h: 0.2, type: "obj", desc: "a" },
+      { x: 0.5, y: 0.6, w: 0.2, h: 0.1, type: "text", text: "T", desc: "b" },
+    ];
+    const placed = offsetAddedRegions(boxes, 0.05);
+    near(placed[0].x, 0.15);
+    near(placed[0].y, 0.25);
+    near(placed[1].x, 0.55);
+    near(placed[1].y, 0.65);
+    near(placed[1].x - placed[0].x, boxes[1].x - boxes[0].x);
+    near(placed[1].y - placed[0].y, boxes[1].y - boxes[0].y);
+    near(placed[0].w, boxes[0].w);
+    near(placed[1].h, boxes[1].h);
+    assert.equal(placed[1].text, "T");
+  });
+
+  it("keeps a nudged region inside the canvas", () => {
+    const placed = offsetAddedRegions([{ x: 0.9, y: 0.9, w: 0.2, h: 0.2 }], 0.05);
+    near(placed[0].x, 0.95);
+    near(placed[0].y, 0.95);
+    assert.ok(placed[0].x + placed[0].w <= 1 + 1e-9);
+    assert.ok(placed[0].y + placed[0].h <= 1 + 1e-9);
+    near(placed[0].w, 0.05);
   });
 });
