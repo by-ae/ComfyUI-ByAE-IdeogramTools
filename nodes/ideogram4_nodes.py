@@ -15,11 +15,26 @@ _BG_LOG = logging.getLogger("byae.ideogram.bg")
 BG_DEBUG = False
 
 
+def _bg_line(msg, *args):
+    return "[ByAE Ideogram BG] " + (msg % args if args else msg)
+
+
 def _bg_log(msg, *args):
     if not BG_DEBUG:
         return
-    line = "[ByAE Ideogram BG] " + (msg % args if args else msg)
+    line = _bg_line(msg, *args)
     _BG_LOG.info("%s", line)
+    print(line, flush=True)
+
+
+def _bg_warn(msg, *args):
+    """Surface save/notify failures in the ComfyUI console.
+
+    Success traces stay behind BG_DEBUG. Failures must not, because the
+    README tells users to read the console when a background image does not update.
+    """
+    line = _bg_line(msg, *args)
+    _BG_LOG.warning("%s", line)
     print(line, flush=True)
 
 try:
@@ -62,10 +77,10 @@ def notify_bg_updated(guid, path):
     try:
         from server import PromptServer
     except ImportError:
-        _bg_log("notify SKIPPED: PromptServer unavailable")
+        _bg_warn("notify skipped: PromptServer is not available, so the editor will not get a push")
         return
     if PromptServer is None or PromptServer.instance is None:
-        _bg_log("notify SKIPPED: PromptServer.instance unavailable")
+        _bg_warn("notify skipped: PromptServer.instance is not available, so the editor will not get a push")
         return
     try:
         safe_guid = sanitize_bg_guid(guid)
@@ -79,7 +94,7 @@ def notify_bg_updated(guid, path):
         PromptServer.instance.send_sync("byae_ideogram_bg_updated", payload, None)
         _bg_log("notify sent guid=%s path=%s", safe_guid, path)
     except Exception as exc:
-        _bg_log("notify FAILED: %s", exc)
+        _bg_warn("notify failed for %s: %s", path, exc)
 
 
 def _hex_rgb(h):
@@ -155,20 +170,27 @@ def _load_bg_from_temp(guid):
 def save_bg_image_to_temp(guid, image):
     raw_guid = repr(guid)
     if image is None:
-        _bg_log("save SKIPPED: image is None (guid=%s)", raw_guid)
+        _bg_warn("background image was not saved: no image was provided (guid=%s)", raw_guid)
         return None
     if not guid or not str(guid).strip():
-        _bg_log("save SKIPPED: empty guid")
+        _bg_warn(
+            "background image was not saved: guid is empty. "
+            "Connect the Prompt Builder guid output to Preview BG Update."
+        )
         return None
     try:
         path = bg_temp_path(guid)
         safe_guid = sanitize_bg_guid(guid)
     except ValueError as exc:
-        _bg_log("save SKIPPED: invalid guid %s (%s)", raw_guid, exc)
+        _bg_warn(
+            "background image was not saved: %s (guid=%s). "
+            "Connect the Prompt Builder guid output to Preview BG Update.",
+            exc, raw_guid,
+        )
         return None
     pil = _tensor_to_pil(image)
     if pil is None:
-        _bg_log("save SKIPPED: could not convert image tensor (guid=%s)", safe_guid)
+        _bg_warn("background image was not saved: could not convert the image tensor (guid=%s)", safe_guid)
         return None
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -177,7 +199,7 @@ def save_bg_image_to_temp(guid, image):
         notify_bg_updated(safe_guid, path)
         return path
     except Exception as exc:
-        _bg_log("save FAILED: %s (%s)", path, exc)
+        _bg_warn("background image was not saved: failed to write %s (%s)", path, exc)
         return None
 
 

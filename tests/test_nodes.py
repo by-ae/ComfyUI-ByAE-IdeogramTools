@@ -6,7 +6,8 @@ import unittest
 # conftest.py handles mocking and path setup
 from nodes.ideogram4_nodes import (
     sanitize_bg_guid, _norm_bbox, _palette, _dumps, _parse_json_list,
-    _caption_to_boxes, _coerce_layout_int, _coerce_opacity
+    _caption_to_boxes, _coerce_layout_int, _coerce_opacity,
+    save_bg_image_to_temp,
 )
 
 
@@ -216,6 +217,26 @@ class TestPromptHelpers(unittest.TestCase):
         self.assertEqual(_coerce_opacity("not a number"), 0.5)
         self.assertEqual(_coerce_opacity(None), 0.5)
         self.assertEqual(_coerce_opacity(float('nan')), 0.5)
+
+    def test_save_bg_image_warns_when_image_missing(self):
+        with self.assertLogs("byae.ideogram.bg", level="WARNING") as cm:
+            result = save_bg_image_to_temp(
+                "12345678-1234-4abc-8abc-123456789012", None
+            )
+        self.assertIsNone(result)
+        self.assertTrue(any("no image" in line.lower() for line in cm.output))
+
+    def test_save_bg_image_warns_when_guid_empty(self):
+        with self.assertLogs("byae.ideogram.bg", level="WARNING") as cm:
+            result = save_bg_image_to_temp("  ", object())
+        self.assertIsNone(result)
+        self.assertTrue(any("guid is empty" in line.lower() for line in cm.output))
+
+    def test_save_bg_image_warns_when_guid_invalid(self):
+        with self.assertLogs("byae.ideogram.bg", level="WARNING") as cm:
+            result = save_bg_image_to_temp("../../etc/passwd", object())
+        self.assertIsNone(result)
+        self.assertTrue(any("invalid background guid" in line.lower() for line in cm.output))
 
 
 class TestPromptAssembly(unittest.TestCase):
