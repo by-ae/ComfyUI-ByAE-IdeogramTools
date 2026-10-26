@@ -15,11 +15,26 @@ _BG_LOG = logging.getLogger("byae.ideogram.bg")
 BG_DEBUG = False
 
 
+def _bg_line(msg, *args):
+    return "[ByAE Ideogram BG] " + (msg % args if args else msg)
+
+
 def _bg_log(msg, *args):
     if not BG_DEBUG:
         return
-    line = "[ByAE Ideogram BG] " + (msg % args if args else msg)
+    line = _bg_line(msg, *args)
     _BG_LOG.info("%s", line)
+    print(line, flush=True)
+
+
+def _bg_warn(msg, *args):
+    """Surface save/notify failures in the ComfyUI console.
+
+    Success traces stay behind BG_DEBUG. Failures must not, because the
+    README tells users to read the console when a background image does not update.
+    """
+    line = _bg_line(msg, *args)
+    _BG_LOG.warning("%s", line)
     print(line, flush=True)
 
 try:
@@ -62,10 +77,10 @@ def notify_bg_updated(guid, path):
     try:
         from server import PromptServer
     except ImportError:
-        _bg_log("notify SKIPPED: PromptServer unavailable")
+        _bg_warn("notify skipped: PromptServer is not available, so the editor will not get a push")
         return
     if PromptServer is None or PromptServer.instance is None:
-        _bg_log("notify SKIPPED: PromptServer.instance unavailable")
+        _bg_warn("notify skipped: PromptServer.instance is not available, so the editor will not get a push")
         return
     try:
         safe_guid = sanitize_bg_guid(guid)
@@ -79,7 +94,7 @@ def notify_bg_updated(guid, path):
         PromptServer.instance.send_sync("byae_ideogram_bg_updated", payload, None)
         _bg_log("notify sent guid=%s path=%s", safe_guid, path)
     except Exception as exc:
-        _bg_log("notify FAILED: %s", exc)
+        _bg_warn("notify failed for %s: %s", path, exc)
 
 
 def _hex_rgb(h):
@@ -155,20 +170,27 @@ def _load_bg_from_temp(guid):
 def save_bg_image_to_temp(guid, image):
     raw_guid = repr(guid)
     if image is None:
-        _bg_log("save SKIPPED: image is None (guid=%s)", raw_guid)
+        _bg_warn("background image was not saved: no image was provided (guid=%s)", raw_guid)
         return None
     if not guid or not str(guid).strip():
-        _bg_log("save SKIPPED: empty guid")
+        _bg_warn(
+            "background image was not saved: guid is empty. "
+            "Connect the Prompt Builder guid output to Preview BG Update."
+        )
         return None
     try:
         path = bg_temp_path(guid)
         safe_guid = sanitize_bg_guid(guid)
     except ValueError as exc:
-        _bg_log("save SKIPPED: invalid guid %s (%s)", raw_guid, exc)
+        _bg_warn(
+            "background image was not saved: %s (guid=%s). "
+            "Connect the Prompt Builder guid output to Preview BG Update.",
+            exc, raw_guid,
+        )
         return None
     pil = _tensor_to_pil(image)
     if pil is None:
-        _bg_log("save SKIPPED: could not convert image tensor (guid=%s)", safe_guid)
+        _bg_warn("background image was not saved: could not convert the image tensor (guid=%s)", safe_guid)
         return None
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -177,7 +199,7 @@ def save_bg_image_to_temp(guid, image):
         notify_bg_updated(safe_guid, path)
         return path
     except Exception as exc:
-        _bg_log("save FAILED: %s (%s)", path, exc)
+        _bg_warn("background image was not saved: failed to write %s (%s)", path, exc)
         return None
 
 
@@ -262,10 +284,40 @@ def _norm_bbox(box):
     return [ymin, xmin, ymax, xmax]
 
 
-def _palette(colors):
+# Ideogram 4 captions accept uppercase #RRGGBB only: 16 style colors, 5 per element.
+# https://github.com/ideogram-oss/ideogram4/blob/main/docs/prompting.md
+_HEX6 = re.compile(r"^#[0-9A-F]{6}$")
+_HEX3 = re.compile(r"^#[0-9A-F]{3}$")
+STYLE_PALETTE_MAX = 16
+ELEMENT_PALETTE_MAX = 5
+
+
+def _normalize_hex(color):
+    """Return an uppercase #RRGGBB color, expanding #RGB, or None if invalid."""
+    if not isinstance(color, str):
+        return None
+    text = color.strip().upper()
+    if _HEX6.match(text):
+        return text
+    if _HEX3.match(text):
+        return "#" + "".join(ch * 2 for ch in text[1:])
+    return None
+
+
+def _palette(colors, limit=None):
     if isinstance(colors, dict):
-        colors = colors.values()
-    return [c.upper() for c in colors if c]
+        colors = list(colors.values())
+    elif not colors:
+        return []
+    out = []
+    for color in colors:
+        hex_color = _normalize_hex(color)
+        if not hex_color:
+            continue
+        out.append(hex_color)
+        if limit is not None and len(out) >= limit:
+            break
+    return out
 
 
 def _dumps(v, lvl=0):
@@ -297,6 +349,72 @@ def _parse_json_list(s):
     return []
 
 
+def _finite_coord(value):
+    """Return a finite float, or None when value is not a usable coordinate."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        value = text
+    elif not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number or number in (float("inf"), float("-inf")):
+        return None
+    return number
+
+
+def _clamp_bbox_axis(value):
+    return max(0.0, min(1000.0, value))
+
+
+def _ideogram_bbox_to_rect(bbox):
+    """Map Ideogram [ymin, xmin, ymax, xmax] to x/y/w/h in 0-1 space.
+
+    Returns None when the four values are not finite coordinates. Inverted
+    axes are swapped and values are clamped to 0-1000, which is the range
+    documented for Ideogram 4 captions.
+    """
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return None
+    coords = [_finite_coord(v) for v in bbox]
+    if any(v is None for v in coords):
+        return None
+    ymin, xmin, ymax, xmax = coords
+    if ymin > ymax:
+        ymin, ymax = ymax, ymin
+    if xmin > xmax:
+        xmin, xmax = xmax, xmin
+    ymin = _clamp_bbox_axis(ymin)
+    xmin = _clamp_bbox_axis(xmin)
+    ymax = _clamp_bbox_axis(ymax)
+    xmax = _clamp_bbox_axis(xmax)
+    return {
+        "x": xmin / 1000.0,
+        "y": ymin / 1000.0,
+        "w": (xmax - xmin) / 1000.0,
+        "h": (ymax - ymin) / 1000.0,
+    }
+
+
+def _fallback_region(index):
+    # Rows of 4. Same spacing as the editor so pasted captions do not overlap.
+    safe_index = index if isinstance(index, int) and index >= 0 else 0
+    row, col = divmod(safe_index, 4)
+    return {
+        "x": 0.02 + col * 0.25,
+        "y": 0.02 + row * 0.17,
+        "w": 0.22,
+        "h": 0.14,
+        "nobbox": True,
+    }
+
+
 def _caption_to_boxes(caption):
     cd = caption.get("compositional_deconstruction", {}) if isinstance(caption, dict) else {}
     boxes = []
@@ -306,20 +424,11 @@ def _caption_to_boxes(caption):
         box = {"type": "text" if el.get("type") == "text" else "obj",
                "text": el.get("text", ""), "desc": el.get("desc", ""),
                "palette": el.get("color_palette", []) or []}
-        bb = el.get("bbox")
-        if isinstance(bb, list) and len(bb) == 4:
-            try:
-                ymin, xmin, ymax, xmax = bb
-                box.update(x=xmin / 1000.0, y=ymin / 1000.0,
-                           w=(xmax - xmin) / 1000.0, h=(ymax - ymin) / 1000.0)
-            except (TypeError, ValueError, ZeroDivisionError):
-                # Fallback: arrange in rows of 4, avoiding overlap
-                row, col = divmod(idx, 4)
-                box.update(x=0.02 + col * 0.25, y=0.02 + row * 0.17, w=0.22, h=0.14, nobbox=True)
+        rect = _ideogram_bbox_to_rect(el.get("bbox"))
+        if rect is None:
+            box.update(_fallback_region(idx))
         else:
-            # Fallback: arrange in rows of 4, avoiding overlap
-            row, col = divmod(idx, 4)
-            box.update(x=0.02 + col * 0.25, y=0.02 + row * 0.17, w=0.22, h=0.14, nobbox=True)
+            box.update(rect)
         boxes.append(box)
     return boxes
 
@@ -423,7 +532,7 @@ folder and picked up automatically by the editor.""",
             else:
                 sd["medium"] = medium
                 sd["art_style"] = style.get("art_style", "")
-            palette = _palette(_parse_json_list(style_palette_data))
+            palette = _palette(_parse_json_list(style_palette_data), STYLE_PALETTE_MAX)
             if palette:
                 sd["color_palette"] = palette
             caption["style_description"] = sd
@@ -439,9 +548,9 @@ folder and picked up automatically by the editor.""",
             if etype == "text":
                 elem["text"] = box.get("text", "")
             elem["desc"] = box.get("desc", "")
-            palette = _palette(box.get("palette", []))
+            palette = _palette(box.get("palette", []), ELEMENT_PALETTE_MAX)
             if palette:
-                elem["color_palette"] = palette[:5]
+                elem["color_palette"] = palette
             elements.append(elem)
 
         caption["compositional_deconstruction"] = {

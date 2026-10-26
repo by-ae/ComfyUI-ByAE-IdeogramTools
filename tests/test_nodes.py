@@ -6,7 +6,8 @@ import unittest
 # conftest.py handles mocking and path setup
 from nodes.ideogram4_nodes import (
     sanitize_bg_guid, _norm_bbox, _palette, _dumps, _parse_json_list,
-    _caption_to_boxes, _coerce_layout_int, _coerce_opacity
+    _caption_to_boxes, _coerce_layout_int, _coerce_opacity,
+    save_bg_image_to_temp,
 )
 
 
@@ -66,6 +67,16 @@ class TestPromptHelpers(unittest.TestCase):
         colors = ["#ff0000", "#00ff00"]
         result = _palette(colors)
         self.assertEqual(result, ["#FF0000", "#00FF00"])
+
+    def test_palette_drops_invalid_and_expands_short_hex(self):
+        colors = [None, "", "red", "#fff", "#aabbcc", 1, True, "#12"]
+        self.assertEqual(_palette(colors), ["#FFFFFF", "#AABBCC"])
+        self.assertEqual(_palette(None), [])
+
+    def test_palette_respects_ideogram_limits(self):
+        colors = ["#{:06X}".format(i) for i in range(20)]
+        self.assertEqual(len(_palette(colors, 16)), 16)
+        self.assertEqual(_palette(colors, 5), ["#{:06X}".format(i) for i in range(5)])
 
     def test_dumps_string(self):
         result = _dumps("hello")
@@ -137,6 +148,70 @@ class TestPromptHelpers(unittest.TestCase):
         result = _caption_to_boxes(caption)
         self.assertEqual(len(result), 1)
         self.assertTrue(result[0]["nobbox"])
+
+    def test_caption_to_boxes_inverted_bbox_is_normalized(self):
+        caption = {
+            "compositional_deconstruction": {
+                "elements": [
+                    {"type": "obj", "desc": "flipped", "bbox": [400, 300, 100, 200]}
+                ]
+            }
+        }
+        result = _caption_to_boxes(caption)
+        self.assertNotIn("nobbox", result[0])
+        self.assertAlmostEqual(result[0]["x"], 0.2)
+        self.assertAlmostEqual(result[0]["y"], 0.1)
+        self.assertAlmostEqual(result[0]["w"], 0.1)
+        self.assertAlmostEqual(result[0]["h"], 0.3)
+
+    def test_caption_to_boxes_out_of_range_bbox_is_clamped(self):
+        caption = {
+            "compositional_deconstruction": {
+                "elements": [
+                    {"type": "obj", "desc": "huge", "bbox": [-100, -50, 1500, 2000]}
+                ]
+            }
+        }
+        result = _caption_to_boxes(caption)
+        self.assertNotIn("nobbox", result[0])
+        self.assertAlmostEqual(result[0]["x"], 0.0)
+        self.assertAlmostEqual(result[0]["y"], 0.0)
+        self.assertAlmostEqual(result[0]["w"], 1.0)
+        self.assertAlmostEqual(result[0]["h"], 1.0)
+
+    def test_caption_to_boxes_numeric_strings(self):
+        caption = {
+            "compositional_deconstruction": {
+                "elements": [
+                    {"type": "text", "text": "Hi", "desc": "d", "bbox": ["100", "200", "300", "400"]}
+                ]
+            }
+        }
+        result = _caption_to_boxes(caption)
+        self.assertNotIn("nobbox", result[0])
+        self.assertAlmostEqual(result[0]["x"], 0.2)
+        self.assertAlmostEqual(result[0]["y"], 0.1)
+        self.assertAlmostEqual(result[0]["w"], 0.2)
+        self.assertAlmostEqual(result[0]["h"], 0.2)
+
+    def test_caption_to_boxes_non_numeric_bbox_keeps_grid_index(self):
+        caption = {
+            "compositional_deconstruction": {
+                "elements": [
+                    {"type": "obj", "desc": "ok", "bbox": [0, 0, 100, 100]},
+                    {"type": "obj", "desc": "bad", "bbox": ["nope", 0, 10, 10]},
+                    {"type": "obj", "desc": "bool", "bbox": [True, 0, 10, 10]},
+                ]
+            }
+        }
+        result = _caption_to_boxes(caption)
+        self.assertNotIn("nobbox", result[0])
+        self.assertTrue(result[1]["nobbox"])
+        self.assertTrue(result[2]["nobbox"])
+        self.assertAlmostEqual(result[1]["x"], 0.02 + 0.25)
+        self.assertAlmostEqual(result[1]["y"], 0.02)
+        self.assertAlmostEqual(result[2]["x"], 0.02 + 0.50)
+        self.assertAlmostEqual(result[2]["y"], 0.02)
 
     def test_caption_to_boxes_invalid_bbox(self):
         caption = {
@@ -216,6 +291,26 @@ class TestPromptHelpers(unittest.TestCase):
         self.assertEqual(_coerce_opacity("not a number"), 0.5)
         self.assertEqual(_coerce_opacity(None), 0.5)
         self.assertEqual(_coerce_opacity(float('nan')), 0.5)
+
+    def test_save_bg_image_warns_when_image_missing(self):
+        with self.assertLogs("byae.ideogram.bg", level="WARNING") as cm:
+            result = save_bg_image_to_temp(
+                "12345678-1234-4abc-8abc-123456789012", None
+            )
+        self.assertIsNone(result)
+        self.assertTrue(any("no image" in line.lower() for line in cm.output))
+
+    def test_save_bg_image_warns_when_guid_empty(self):
+        with self.assertLogs("byae.ideogram.bg", level="WARNING") as cm:
+            result = save_bg_image_to_temp("  ", object())
+        self.assertIsNone(result)
+        self.assertTrue(any("guid is empty" in line.lower() for line in cm.output))
+
+    def test_save_bg_image_warns_when_guid_invalid(self):
+        with self.assertLogs("byae.ideogram.bg", level="WARNING") as cm:
+            result = save_bg_image_to_temp("../../etc/passwd", object())
+        self.assertIsNone(result)
+        self.assertTrue(any("invalid background guid" in line.lower() for line in cm.output))
 
 
 class TestPromptAssembly(unittest.TestCase):

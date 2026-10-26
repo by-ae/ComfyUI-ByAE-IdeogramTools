@@ -6,6 +6,9 @@ import {
 import {
   loadStores, saveStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
+import {
+  cleanPalette, elementToRegion, offsetAddedRegions, regionCoordsFinite,
+} from "./caption_layout.js";
 
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
@@ -869,7 +872,9 @@ app.registerExtension({
           try {
             const parsed = JSON.parse(p.byae_elements_data);
             if (Array.isArray(parsed)) {
-              node._boxes = parsed.filter((b) => b && typeof b.x === "number");
+              node._boxes = parsed
+                .filter(regionCoordsFinite)
+                .map((b) => normalizeBoxCoords(b));
               node._activeIdx = node._boxes.length ? 0 : -1;
               node._selected = node._boxes.length ? new Set([0]) : new Set();
             }
@@ -1655,8 +1660,6 @@ app.registerExtension({
         return widgetString(findW(name)?.value);
       }
 
-      function cleanPalette(arr) { return (arr || []).filter((c) => c).map((c) => c.toUpperCase()); }
-
       function normBboxJS(b) {
         const c = (v) => Math.max(0, Math.min(1000, Math.round(v * 1000)));
         let ymin = c(b.y), xmin = c(b.x), ymax = c(b.y + b.h), xmax = c(b.x + b.w);
@@ -1674,7 +1677,7 @@ app.registerExtension({
           const sd = { aesthetics: getW("aesthetics"), lighting: getW("lighting") };
           if (kind === "photo") { sd.photo = getW("style.photo"); sd.medium = getW("medium"); }
           else { sd.medium = getW("medium"); sd.art_style = getW("style.art_style"); }
-          const pal = cleanPalette(node._stylePalette);
+          const pal = cleanPalette(node._stylePalette, MAX_STYLE_COLORS);
           if (pal.length) sd.color_palette = pal;
           cap.style_description = sd;
         }
@@ -1684,7 +1687,7 @@ app.registerExtension({
           if (!b.nobbox) el.bbox = normBboxJS(b);
           if (etype === "text") el.text = b.text || "";
           el.desc = b.desc || "";
-          const pal = cleanPalette(b.palette).slice(0, MAX_ELEM_COLORS);
+          const pal = cleanPalette(b.palette, MAX_ELEM_COLORS);
           if (pal.length) el.color_palette = pal;
           return el;
         });
@@ -1732,26 +1735,7 @@ app.registerExtension({
       }
 
       function bboxElemToBox(el, idx) {
-        if (!el || typeof el !== "object") return null;
-        const box = {
-          type: el.type === "text" ? "text" : "obj",
-          text: el.text || "", desc: el.desc || "",
-          palette: Array.isArray(el.color_palette) ? el.color_palette.slice() : [],
-        };
-        const bb = el.bbox;
-        if (Array.isArray(bb) && bb.length === 4) {
-          const [ymin, xmin, ymax, xmax] = bb;
-          box.x = xmin / 1000; box.y = ymin / 1000;
-          box.w = (xmax - xmin) / 1000; box.h = (ymax - ymin) / 1000;
-        } else {
-          // Fallback: arrange in rows of 4, avoiding overlap
-          const i = idx || 0;
-          const row = Math.floor(i / 4);
-          const col = i % 4;
-          box.x = 0.02 + col * 0.25; box.y = 0.02 + row * 0.17;
-          box.w = 0.22; box.h = 0.14; box.nobbox = true;
-        }
-        return box;
+        return elementToRegion(el, idx);
       }
 
       function remapImportedBoxes(boxes, importOpts = { source: "stretch" }) {
@@ -1854,13 +1838,10 @@ app.registerExtension({
       function applySceneState(state, replace) {
         if (replace) clearAll();
         const startIdx = node._boxes.length;
+        const incoming = (state.boxes || []).map(cloneBox);
+        const placed = replace ? incoming : offsetAddedRegions(incoming);
         const newIdxs = [];
-        for (const b of state.boxes || []) {
-          const nb = cloneBox(b);
-          if (!replace) {
-            nb.x = clamp01(nb.x + 0.05 * (newIdxs.length + 1));
-            nb.y = clamp01(nb.y + 0.05 * (newIdxs.length + 1));
-          }
+        for (const nb of placed) {
           node._boxes.push(nb);
           newIdxs.push(startIdx + newIdxs.length);
         }
