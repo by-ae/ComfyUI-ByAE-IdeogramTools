@@ -5,13 +5,13 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-# Mock folder_paths before importing store
-sys.modules['folder_paths'] = MagicMock()
-
+# conftest.py installs the folder_paths mock before store is imported.
+# Replacing sys.modules['folder_paths'] here binds a second mock that the
+# route tests then configure, while store keeps writing through the original.
 from store import _validate_name, load_bucket, save_entry, delete_entry
 
 
