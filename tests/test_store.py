@@ -211,6 +211,34 @@ class TestStore(unittest.TestCase):
             self.assertIn("iteration", bucket[f"char{i}"])
             self.assertEqual(bucket[f"char{i}"]["value"], i)
 
+    def test_first_bucket_lock_excludes_other_writers(self):
+        import threading
+        import time
+        from store import _BUCKET_LOCKS, _BUCKET_LOCKS_GUARD, _bucket_lock
+
+        with _BUCKET_LOCKS_GUARD:
+            _BUCKET_LOCKS.pop("objects", None)
+
+        state = {"current": 0, "max": 0}
+        started = threading.Barrier(12)
+
+        def worker():
+            started.wait()
+            with _bucket_lock("objects"):
+                state["current"] += 1
+                state["max"] = max(state["max"], state["current"])
+                time.sleep(0.01)
+                state["current"] -= 1
+
+        threads = [threading.Thread(target=worker) for _ in range(12)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(state["max"], 1)
+        self.assertEqual(state["current"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

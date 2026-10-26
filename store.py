@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 import time
 
 import folder_paths
@@ -18,8 +19,11 @@ _SAFE_NAME = re.compile(r"^[\w][\w\- ]{0,63}$", re.UNICODE)
 
 logger = logging.getLogger(__name__)
 
-# File locks for concurrent write protection (one lock per bucket)
+# File locks for concurrent write protection (one lock per bucket).
+# The guard lock covers creating the per-bucket lock; without it two threads
+# can each install a different lock and then write the same file together.
 _BUCKET_LOCKS = {}
+_BUCKET_LOCKS_GUARD = threading.Lock()
 
 
 def _store_dir() -> str:
@@ -31,10 +35,11 @@ def _store_dir() -> str:
 @contextlib.contextmanager
 def _bucket_lock(bucket: str):
     """Thread-safe lock for bucket writes to prevent concurrent write corruption."""
-    import threading
-    if bucket not in _BUCKET_LOCKS:
-        _BUCKET_LOCKS[bucket] = threading.Lock()
-    lock = _BUCKET_LOCKS[bucket]
+    with _BUCKET_LOCKS_GUARD:
+        lock = _BUCKET_LOCKS.get(bucket)
+        if lock is None:
+            lock = threading.Lock()
+            _BUCKET_LOCKS[bucket] = lock
     lock.acquire()
     try:
         yield
