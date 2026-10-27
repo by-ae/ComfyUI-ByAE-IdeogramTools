@@ -62,7 +62,7 @@ This is usually harmless. The store routes register on startup, and if they fail
 
 **Unicode support:** Preset names can include Unicode characters (e.g. 角色, Персонаж, Émilie). Names must start with a letter, number, or underscore, and can contain letters, numbers, spaces, underscores, and hyphens (up to 64 characters).
 
-**Corrupt file recovery:** If a store file becomes corrupted (invalid JSON), it will be automatically moved to a backup file named `<bucket>.json.corrupt-<timestamp>` and the bucket will be treated as empty. Other buckets continue to work normally, and saves to the recovered bucket will work immediately.
+**Corrupt file recovery:** If a store file cannot be used as a bucket (invalid JSON, or JSON that is not an object), it is moved to a backup named `<bucket>.json.corrupt-<timestamp>` and the bucket is treated as empty. When that backup name already exists, the new file gets an extra suffix so the earlier backup is kept. Other buckets continue to work normally, and saves to the recovered bucket work immediately.
 
 ### Failed to save character/object/scene
 

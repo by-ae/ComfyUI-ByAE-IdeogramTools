@@ -60,26 +60,37 @@ def _validate_name(name: str) -> str:
     return name
 
 
+def _backup_unreadable(path: str, reason) -> None:
+    """Move a store file aside. A name that already exists is not replaced."""
+    timestamp = int(time.time())
+    backup_path = f"{path}.corrupt-{timestamp}"
+    if os.path.exists(backup_path):
+        backup_path = f"{path}.corrupt-{timestamp}-{time.time_ns()}"
+    logger.warning(
+        "ByAE Ideogram: corrupt store file %s (%s), moving to %s",
+        path, reason, backup_path,
+    )
+    try:
+        os.rename(path, backup_path)
+    except OSError as rename_err:
+        logger.error("ByAE Ideogram: failed to backup corrupt file: %s", rename_err)
+
+
 def _read_json(path: str) -> dict:
     if not os.path.isfile(path):
         return {}
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        return data if isinstance(data, dict) else {}
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        # Move corrupt file aside and treat bucket as empty
-        timestamp = int(time.time())
-        backup_path = f"{path}.corrupt-{timestamp}"
-        logger.warning(
-            "ByAE Ideogram: corrupt store file %s (%s), moving to %s",
-            path, e, backup_path
-        )
-        try:
-            os.rename(path, backup_path)
-        except OSError as rename_err:
-            logger.error("ByAE Ideogram: failed to backup corrupt file: %s", rename_err)
+        _backup_unreadable(path, e)
         return {}
+    if isinstance(data, dict):
+        return data
+    # A JSON array or other value is valid JSON but not a bucket. Leaving it
+    # in place made the next save overwrite it with no backup.
+    _backup_unreadable(path, f"expected a JSON object, got {type(data).__name__}")
+    return {}
 
 
 def _write_json(path: str, data: dict) -> None:
