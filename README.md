@@ -58,6 +58,8 @@ The builder outputs a structured JSON prompt compatible with Ideogram 4's API fo
 
 This is usually harmless. The store routes register on startup, and if they fail, character/object/scene save features may not work, but the builder itself will function normally. Check file permissions on your ComfyUI user directory.
 
+Load shows the request error (for example `HTTP 500`) when the store cannot be read. It says there are no saved scenes or characters only when the server returns an empty library. A failed request does not mean the presets were deleted.
+
 **Store location:** Character, object, and scene presets are stored in `<ComfyUI user directory>/byae-ideogram-tools/` as JSON files (`characters.json`, `objects.json`, `scenes.json`).
 
 **Unicode support:** Preset names can include Unicode characters (e.g. 角色, Персонаж, Émilie). Names must start with a letter, number, or underscore, and can contain letters, numbers, spaces, underscores, and hyphens (up to 64 characters).
@@ -97,8 +99,8 @@ pip install pytest pytest-asyncio aiohttp
 # Run all tests
 python -m pytest tests/ -v
 
-# Region layout helpers (no Python dependencies)
-node --test tests/caption_layout.test.js
+# Region layout and store-client helpers (no Python dependencies)
+node --test tests/*.test.js
 
 # Run specific test file
 python -m pytest tests/test_store.py -v
