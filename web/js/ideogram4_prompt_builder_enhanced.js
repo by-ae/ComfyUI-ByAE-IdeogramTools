@@ -7,7 +7,8 @@ import {
   loadStores, saveStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
 import {
-  cleanPalette, elementToRegion, offsetAddedRegions, regionCoordsFinite,
+  cleanPalette, elementToRegion, offsetAddedRegions, pasteRegions, regionCoordsFinite,
+  staggerLoadedRegion,
 } from "./caption_layout.js";
 
 const { app } = window.comfyAPI.app;
@@ -1527,11 +1528,7 @@ app.registerExtension({
             e.stopPropagation();
             if (!node._clipBoxes?.length) return;
             const newIdxs = [];
-            for (const cb of node._clipBoxes) {
-              const nb = cloneBox(cb);
-              nb.x = clamp01(nb.x + 0.03);
-              nb.y = clamp01(nb.y + 0.03);
-              delete nb.storeRef;
+            for (const nb of pasteRegions(node._clipBoxes.map((b) => cloneBox(b)))) {
               node._boxes.push(nb);
               newIdxs.push(node._boxes.length - 1);
             }
@@ -2011,10 +2008,9 @@ app.registerExtension({
           const bucket = type === "object" ? stores.objects : stores.characters;
           const data = bucket[name];
           if (!data) return;
-          const offset = node._boxes.length * 0.04;
+          const placed = staggerLoadedRegion(node._boxes.length);
           const nb = {
-            x: clamp01(0.1 + offset), y: clamp01(0.1 + offset),
-            w: 0.25, h: 0.2,
+            x: placed.x, y: placed.y, w: placed.w, h: placed.h,
             type: data.type || "obj",
             text: data.text || "",
             desc: data.desc || "",
