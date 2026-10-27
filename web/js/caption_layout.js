@@ -35,6 +35,29 @@ export function ideogramBboxToRect(bbox) {
   };
 }
 
+function scaleAxis(value) {
+  if (value >= 1) return 1000;
+  if (value <= 0) return 0;
+  return Math.max(0, Math.min(1000, Math.round(value * 1000)));
+}
+
+/** Editor x/y/w/h (0-1) to Ideogram [ymin, xmin, ymax, xmax], or null if unusable. */
+export function rectToIdeogramBbox(box) {
+  if (!box || typeof box !== "object") return null;
+  const x = finiteCoord(box.x ?? 0);
+  const y = finiteCoord(box.y ?? 0);
+  const w = finiteCoord(box.w ?? 0);
+  const h = finiteCoord(box.h ?? 0);
+  if (x == null || y == null || w == null || h == null) return null;
+  let ymin = scaleAxis(y);
+  let xmin = scaleAxis(x);
+  let ymax = scaleAxis(y + h);
+  let xmax = scaleAxis(x + w);
+  if (ymin > ymax) [ymin, ymax] = [ymax, ymin];
+  if (xmin > xmax) [xmin, xmax] = [xmax, xmin];
+  return [ymin, xmin, ymax, xmax];
+}
+
 export function fallbackRegion(index) {
   const i = Number.isInteger(index) && index >= 0 ? index : 0;
   const row = Math.floor(i / 4);

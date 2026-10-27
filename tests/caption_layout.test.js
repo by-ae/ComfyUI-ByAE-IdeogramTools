@@ -8,6 +8,7 @@ import {
   ideogramBboxToRect,
   offsetAddedRegions,
   pasteRegions,
+  rectToIdeogramBbox,
   regionCoordsFinite,
   staggerLoadedRegion,
 } from "../web/js/caption_layout.js";
@@ -73,6 +74,17 @@ describe("ideogram bbox import", () => {
     assert.equal(regionCoordsFinite({ x: 0.1, y: 0.2, w: 0.3, h: 0.4 }), true);
     assert.equal(regionCoordsFinite({ x: NaN, y: 0.2, w: 0.3, h: 0.4 }), false);
     assert.equal(regionCoordsFinite({ x: 0.1, y: 0.2, w: 0.3 }), false);
+  });
+
+  it("exports a usable bbox and drops coordinates that are not finite", () => {
+    assert.deepEqual(rectToIdeogramBbox({ x: 0.1, y: 0.2, w: 0.3, h: 0.4 }), [200, 100, 600, 400]);
+    assert.deepEqual(rectToIdeogramBbox({ x: "0.1", y: "0.2", w: "0.3", h: "0.4" }), [200, 100, 600, 400]);
+    assert.deepEqual(rectToIdeogramBbox({ x: 0.5, y: 0.6, w: -0.2, h: -0.1 }), [500, 300, 600, 500]);
+    assert.equal(rectToIdeogramBbox({ x: Number.NaN, y: 0.2, w: 0.3, h: 0.4 }), null);
+    assert.equal(rectToIdeogramBbox({ x: "nope", y: 0, w: 0.2, h: 0.2 }), null);
+    assert.equal(rectToIdeogramBbox({ x: true, y: 0, w: 0.2, h: 0.2 }), null);
+    assert.deepEqual(rectToIdeogramBbox({}), [0, 0, 0, 0]);
+    assert.deepEqual(rectToIdeogramBbox({ x: 1e308, y: 0, w: 1e308, h: 0.2 }), [0, 1000, 200, 1000]);
   });
 });
 
