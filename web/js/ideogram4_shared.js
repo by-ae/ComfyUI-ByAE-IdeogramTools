@@ -8,8 +8,6 @@ export const BUILDER_CLASS = "Ideogram4PromptBuilderKJEnhancedByAE";
 export const PREVIEW_UPDATE_CLASS = "Ideogram4PromptBuilderKJPreviewUpdateByAE";
 const STORE_API = "/byae/ideogram/stores";
 
-const EMPTY_STORES = () => ({ characters: {}, objects: {}, scenes: {} });
-
 export async function loadStores() {
   try {
     const resp = await fetch(STORE_API, {
@@ -23,8 +21,9 @@ export async function loadStores() {
       scenes: data.scenes || {},
     };
   } catch (e) {
+    // Callers distinguish a failed request from a library that is actually empty.
     console.warn("ByAE Ideogram: failed to load stores", e);
-    return EMPTY_STORES();
+    throw e;
   }
 }
 

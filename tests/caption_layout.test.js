@@ -7,7 +7,10 @@ import {
   fallbackRegion,
   ideogramBboxToRect,
   offsetAddedRegions,
+  pasteRegions,
+  rectToIdeogramBbox,
   regionCoordsFinite,
+  staggerLoadedRegion,
 } from "../web/js/caption_layout.js";
 
 describe("ideogram bbox import", () => {
@@ -72,6 +75,17 @@ describe("ideogram bbox import", () => {
     assert.equal(regionCoordsFinite({ x: NaN, y: 0.2, w: 0.3, h: 0.4 }), false);
     assert.equal(regionCoordsFinite({ x: 0.1, y: 0.2, w: 0.3 }), false);
   });
+
+  it("exports a usable bbox and drops coordinates that are not finite", () => {
+    assert.deepEqual(rectToIdeogramBbox({ x: 0.1, y: 0.2, w: 0.3, h: 0.4 }), [200, 100, 600, 400]);
+    assert.deepEqual(rectToIdeogramBbox({ x: "0.1", y: "0.2", w: "0.3", h: "0.4" }), [200, 100, 600, 400]);
+    assert.deepEqual(rectToIdeogramBbox({ x: 0.5, y: 0.6, w: -0.2, h: -0.1 }), [500, 300, 600, 500]);
+    assert.equal(rectToIdeogramBbox({ x: Number.NaN, y: 0.2, w: 0.3, h: 0.4 }), null);
+    assert.equal(rectToIdeogramBbox({ x: "nope", y: 0, w: 0.2, h: 0.2 }), null);
+    assert.equal(rectToIdeogramBbox({ x: true, y: 0, w: 0.2, h: 0.2 }), null);
+    assert.deepEqual(rectToIdeogramBbox({}), [0, 0, 0, 0]);
+    assert.deepEqual(rectToIdeogramBbox({ x: 1e308, y: 0, w: 1e308, h: 0.2 }), [0, 1000, 200, 1000]);
+  });
 });
 
 describe("color palettes", () => {
@@ -119,5 +133,66 @@ describe("added scenes", () => {
     assert.ok(placed[0].x + placed[0].w <= 1 + 1e-9);
     assert.ok(placed[0].y + placed[0].h <= 1 + 1e-9);
     near(placed[0].w, 0.05);
+  });
+});
+
+describe("pasted regions", () => {
+  it("nudges by the paste offset and stays inside the canvas", () => {
+    const placed = pasteRegions([
+      { x: 0.9, y: 0.9, w: 0.2, h: 0.2, desc: "edge", palette: ["#FFFFFF"] },
+    ]);
+    near(placed[0].x, 0.93);
+    near(placed[0].y, 0.93);
+    near(placed[0].w, 0.07);
+    near(placed[0].h, 0.07);
+    assert.ok(placed[0].x + placed[0].w <= 1 + 1e-9);
+    assert.ok(placed[0].y + placed[0].h <= 1 + 1e-9);
+    assert.equal(placed[0].desc, "edge");
+  });
+
+  it("does not keep the source store link or share its palette array", () => {
+    const src = [{
+      x: 0.1, y: 0.2, w: 0.2, h: 0.2,
+      palette: ["#FFFFFF"],
+      storeRef: { type: "character", name: "Ada" },
+    }];
+    const placed = pasteRegions(src);
+    near(placed[0].x, 0.13);
+    near(placed[0].y, 0.23);
+    near(placed[0].w, 0.2);
+    assert.equal(placed[0].storeRef, undefined);
+    placed[0].palette.push("#000000");
+    assert.deepEqual(src[0].palette, ["#FFFFFF"]);
+    assert.deepEqual(src[0].storeRef, { type: "character", name: "Ada" });
+  });
+});
+
+describe("loaded characters and objects", () => {
+  it("keeps the original diagonal stagger while the region still fits", () => {
+    for (let i = 0; i <= 16; i++) {
+      const box = staggerLoadedRegion(i);
+      near(box.x, 0.1 + i * 0.04);
+      near(box.y, 0.1 + i * 0.04);
+      near(box.w, 0.25);
+      near(box.h, 0.2);
+      assert.ok(box.x + box.w <= 1 + 1e-9, `index ${i} leaves the canvas`);
+    }
+  });
+
+  it("tiles later regions inside the canvas instead of sliding off it", () => {
+    const box = staggerLoadedRegion(17);
+    near(box.x, 0);
+    near(box.y, 0);
+    near(box.w, 0.25);
+    near(box.h, 0.2);
+    const next = staggerLoadedRegion(18);
+    near(next.x, 0.25);
+    near(next.y, 0);
+    for (let i = 0; i < 80; i++) {
+      const placed = staggerLoadedRegion(i);
+      assert.ok(placed.x >= -1e-9 && placed.y >= -1e-9, `index ${i} origin`);
+      assert.ok(placed.x + placed.w <= 1 + 1e-9, `index ${i} x`);
+      assert.ok(placed.y + placed.h <= 1 + 1e-9, `index ${i} y`);
+    }
   });
 });

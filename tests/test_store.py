@@ -144,6 +144,54 @@ class TestStore(unittest.TestCase):
         self.assertIn("ValidObject", stores["objects"])
         self.assertEqual(stores["objects"]["ValidObject"]["data"], "test")
 
+    def test_non_object_json_is_backed_up_before_overwrite(self):
+        bucket_path = os.path.join(self.temp_dir, "byae-ideogram-tools", "characters.json")
+        os.makedirs(os.path.dirname(bucket_path), exist_ok=True)
+        original = '[{"desc": "keep me"}]'
+        with open(bucket_path, "w", encoding="utf-8") as f:
+            f.write(original)
+
+        self.assertEqual(load_bucket("characters"), {})
+        self.assertFalse(os.path.exists(bucket_path))
+        backup_files = [
+            name for name in os.listdir(os.path.dirname(bucket_path))
+            if name.startswith("characters.json.corrupt-")
+        ]
+        self.assertEqual(len(backup_files), 1)
+        with open(os.path.join(os.path.dirname(bucket_path), backup_files[0]), encoding="utf-8") as f:
+            self.assertEqual(f.read(), original)
+
+        save_entry("characters", "New", {"desc": "n"})
+        bucket = load_bucket("characters")
+        self.assertEqual(bucket["New"]["desc"], "n")
+        with open(os.path.join(os.path.dirname(bucket_path), backup_files[0]), encoding="utf-8") as f:
+            self.assertEqual(f.read(), original)
+
+    def test_second_corrupt_backup_in_the_same_second_keeps_the_first(self):
+        store_dir = os.path.join(self.temp_dir, "byae-ideogram-tools")
+        os.makedirs(store_dir, exist_ok=True)
+        bucket_path = os.path.join(store_dir, "objects.json")
+        stamp = 1_700_000_000
+        existing = os.path.join(store_dir, f"objects.json.corrupt-{stamp}")
+        with open(existing, "w", encoding="utf-8") as f:
+            f.write("first")
+        with open(bucket_path, "w", encoding="utf-8") as f:
+            f.write("{not json")
+
+        with patch("store.time.time", return_value=stamp):
+            self.assertEqual(load_bucket("objects"), {})
+
+        self.assertFalse(os.path.exists(bucket_path))
+        with open(existing, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "first")
+        extras = [
+            name for name in os.listdir(store_dir)
+            if name.startswith(f"objects.json.corrupt-{stamp}-")
+        ]
+        self.assertEqual(len(extras), 1)
+        with open(os.path.join(store_dir, extras[0]), encoding="utf-8") as f:
+            self.assertEqual(f.read(), "{not json")
+
     def test_save_works_after_corrupt_file_recovery(self):
         # Create corrupt file
         bucket_path = os.path.join(self.temp_dir, "byae-ideogram-tools", "scenes.json")

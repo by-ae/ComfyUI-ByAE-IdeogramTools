@@ -7,6 +7,7 @@ import unittest
 from nodes.ideogram4_nodes import (
     sanitize_bg_guid, _norm_bbox, _palette, _dumps, _parse_json_list,
     _caption_to_boxes, _coerce_layout_int, _coerce_opacity,
+    _elements_from_boxes, _preview_edges,
     save_bg_image_to_temp,
 )
 
@@ -57,6 +58,45 @@ class TestPromptHelpers(unittest.TestCase):
         box = {}
         result = _norm_bbox(box)
         self.assertEqual(result, [0, 0, 0, 0])
+
+    def test_norm_bbox_accepts_numeric_strings(self):
+        box = {"x": "0.1", "y": "0.2", "w": "0.3", "h": "0.4"}
+        self.assertEqual(_norm_bbox(box), [200, 100, 600, 400])
+
+    def test_norm_bbox_rejects_non_finite_coordinates(self):
+        self.assertIsNone(_norm_bbox({"x": float("nan"), "y": 0.2, "w": 0.3, "h": 0.4}))
+        self.assertIsNone(_norm_bbox({"x": "nope", "y": 0.2, "w": 0.3, "h": 0.4}))
+        self.assertIsNone(_norm_bbox({"x": True, "y": 0.0, "w": 0.2, "h": 0.2}))
+        self.assertIsNone(_norm_bbox({"x": float("inf"), "y": 0.0, "w": 0.2, "h": 0.2}))
+
+    def test_norm_bbox_huge_finite_values_do_not_raise(self):
+        result = _norm_bbox({"x": 1e308, "y": 0.0, "w": 1e308, "h": 0.2})
+        self.assertEqual(result, [0, 1000, 200, 1000])
+
+    def test_elements_from_boxes_omits_unusable_bbox(self):
+        elements = _elements_from_boxes([
+            {"type": "obj", "desc": "bad", "x": "nope", "y": 0, "w": 0.2, "h": 0.2},
+            {
+                "type": "text", "text": "Hi", "desc": "ok",
+                "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4,
+            },
+            "skip",
+            {"type": "obj", "desc": "no box", "nobbox": True, "x": 0.1, "y": 0.1, "w": 0.2, "h": 0.2},
+        ])
+        self.assertEqual(len(elements), 3)
+        self.assertNotIn("bbox", elements[0])
+        self.assertEqual(elements[0]["desc"], "bad")
+        self.assertEqual(elements[1]["bbox"], [200, 100, 600, 400])
+        self.assertEqual(elements[1]["text"], "Hi")
+        self.assertEqual(list(elements[1].keys()), ["type", "bbox", "text", "desc"])
+        self.assertNotIn("bbox", elements[2])
+
+    def test_preview_edges_skip_unusable_box(self):
+        self.assertIsNone(_preview_edges({"x": "nope", "y": 0, "w": 0.2, "h": 0.2}, 100, 50))
+        self.assertEqual(
+            _preview_edges({"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}, 100, 50),
+            (10, 10, 40, 30),
+        )
 
     def test_palette_filters_empty_strings(self):
         colors = {"c1": "#FF0000", "c2": "", "c3": "#00FF00", "c4": None}

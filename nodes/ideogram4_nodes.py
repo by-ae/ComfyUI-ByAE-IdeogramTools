@@ -230,14 +230,10 @@ def _render_preview(boxes, width, height, bg_guid="", background_opacity=0.5):
         if not isinstance(box, dict) or box.get("nobbox"):
             continue
         r, g, b = _hex_rgb(PREVIEW_PALETTE[i % len(PREVIEW_PALETTE)])
-        x1 = max(0, min(rw, round(box.get("x", 0) * rw)))
-        y1 = max(0, min(rh, round(box.get("y", 0) * rh)))
-        x2 = max(0, min(rw, round((box.get("x", 0) + box.get("w", 0)) * rw)))
-        y2 = max(0, min(rh, round((box.get("y", 0) + box.get("h", 0)) * rh)))
-        if x2 < x1:
-            x1, x2 = x2, x1
-        if y2 < y1:
-            y1, y2 = y2, y1
+        edges = _preview_edges(box, rw, rh)
+        if edges is None:
+            continue
+        x1, y1, x2, y2 = edges
 
         draw.rectangle([x1, y1, x2, y2], outline=(r, g, b, 255), width=2)
 
@@ -271,17 +267,72 @@ def _render_preview(boxes, width, height, bg_guid="", background_opacity=0.5):
     return torch.from_numpy(arr).unsqueeze(0)
 
 
-def _norm_bbox(box):
-    def c(v):
-        return max(0, min(1000, round(v * 1000)))
+def _scale_axis(value):
+    """Map one finite axis onto Ideogram's integer 0-1000 range.
 
-    x, y, w, h = box.get("x", 0.0), box.get("y", 0.0), box.get("w", 0.0), box.get("h", 0.0)
-    ymin, xmin, ymax, xmax = c(y), c(x), c(y + h), c(x + w)
+    Clamp before rounding. round() raises OverflowError once value * 1000
+    exceeds the float range, which a hand-edited region can do.
+    """
+    if value >= 1:
+        return 1000
+    if value <= 0:
+        return 0
+    return int(round(value * 1000))
+
+
+def _box_coords(box):
+    """Return x, y, w, h as finite floats, or None when any value is unusable."""
+    if not isinstance(box, dict):
+        return None
+    coords = [_finite_coord(box.get(key, 0.0)) for key in ("x", "y", "w", "h")]
+    if any(value is None for value in coords):
+        return None
+    return coords
+
+
+def _norm_bbox(box):
+    """Return [ymin, xmin, ymax, xmax], or None when a coordinate is unusable.
+
+    Numeric strings are accepted. Booleans are not: True is an int, and
+    treating it as 1 used to pin an edge to the far side of the canvas.
+    """
+    coords = _box_coords(box)
+    if coords is None:
+        return None
+    x, y, w, h = coords
+    ymin, xmin, ymax, xmax = (
+        _scale_axis(y),
+        _scale_axis(x),
+        _scale_axis(y + h),
+        _scale_axis(x + w),
+    )
     if ymin > ymax:
         ymin, ymax = ymax, ymin
     if xmin > xmax:
         xmin, xmax = xmax, xmin
     return [ymin, xmin, ymax, xmax]
+
+
+def _preview_edges(box, rw, rh):
+    """Pixel edges for one region, or None when its coordinates are unusable."""
+    coords = _box_coords(box)
+    if coords is None:
+        return None
+    x, y, w, h = coords
+
+    def edge(value, scale):
+        if value >= 1:
+            return scale
+        if value <= 0:
+            return 0
+        return max(0, min(scale, int(round(value * scale))))
+
+    x1, y1, x2, y2 = edge(x, rw), edge(y, rh), edge(x + w, rw), edge(y + h, rh)
+    if x2 < x1:
+        x1, x2 = x2, x1
+    if y2 < y1:
+        y1, y2 = y2, y1
+    return x1, y1, x2, y2
 
 
 # Ideogram 4 captions accept uppercase #RRGGBB only: 16 style colors, 5 per element.
@@ -336,6 +387,27 @@ def _dumps(v, lvl=0):
         items = [pad + json.dumps(k, ensure_ascii=False) + ": " + _dumps(val, lvl + 1) for k, val in v.items()]
         return "{\n" + ",\n".join(items) + "\n" + end + "}"
     return json.dumps(v, ensure_ascii=False)
+
+
+def _elements_from_boxes(boxes):
+    elements = []
+    for box in boxes or []:
+        if not isinstance(box, dict):
+            continue
+        etype = "text" if box.get("type") == "text" else "obj"
+        elem = {"type": etype}
+        if not box.get("nobbox"):
+            bbox = _norm_bbox(box)
+            if bbox is not None:
+                elem["bbox"] = bbox
+        if etype == "text":
+            elem["text"] = box.get("text", "")
+        elem["desc"] = box.get("desc", "")
+        palette = _palette(box.get("palette", []), ELEMENT_PALETTE_MAX)
+        if palette:
+            elem["color_palette"] = palette
+        elements.append(elem)
+    return elements
 
 
 def _parse_json_list(s):
@@ -537,21 +609,7 @@ folder and picked up automatically by the editor.""",
                 sd["color_palette"] = palette
             caption["style_description"] = sd
 
-        elements = []
-        for box in boxes:
-            if not isinstance(box, dict):
-                continue
-            etype = "text" if box.get("type") == "text" else "obj"
-            elem = {"type": etype}
-            if not box.get("nobbox"):
-                elem["bbox"] = _norm_bbox(box)
-            if etype == "text":
-                elem["text"] = box.get("text", "")
-            elem["desc"] = box.get("desc", "")
-            palette = _palette(box.get("palette", []), ELEMENT_PALETTE_MAX)
-            if palette:
-                elem["color_palette"] = palette
-            elements.append(elem)
+        elements = _elements_from_boxes(boxes)
 
         caption["compositional_deconstruction"] = {
             "background": background,

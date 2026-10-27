@@ -35,6 +35,29 @@ export function ideogramBboxToRect(bbox) {
   };
 }
 
+function scaleAxis(value) {
+  if (value >= 1) return 1000;
+  if (value <= 0) return 0;
+  return Math.max(0, Math.min(1000, Math.round(value * 1000)));
+}
+
+/** Editor x/y/w/h (0-1) to Ideogram [ymin, xmin, ymax, xmax], or null if unusable. */
+export function rectToIdeogramBbox(box) {
+  if (!box || typeof box !== "object") return null;
+  const x = finiteCoord(box.x ?? 0);
+  const y = finiteCoord(box.y ?? 0);
+  const w = finiteCoord(box.w ?? 0);
+  const h = finiteCoord(box.h ?? 0);
+  if (x == null || y == null || w == null || h == null) return null;
+  let ymin = scaleAxis(y);
+  let xmin = scaleAxis(x);
+  let ymax = scaleAxis(y + h);
+  let xmax = scaleAxis(x + w);
+  if (ymin > ymax) [ymin, ymax] = [ymax, ymin];
+  if (xmin > xmax) [xmin, xmax] = [xmax, xmin];
+  return [ymin, xmin, ymax, xmax];
+}
+
 export function fallbackRegion(index) {
   const i = Number.isInteger(index) && index >= 0 ? index : 0;
   const row = Math.floor(i / 4);
@@ -118,4 +141,45 @@ export function offsetAddedRegions(boxes, nudge = 0.05) {
     x: (typeof b.x === "number" && Number.isFinite(b.x) ? b.x : 0) + nudge,
     y: (typeof b.y === "number" && Number.isFinite(b.y) ? b.y : 0) + nudge,
   }));
+}
+
+/** Ctrl+V: nudge a copy so it is visible, and do not keep the source store link. */
+export function pasteRegions(boxes, nudge = 0.03) {
+  return offsetAddedRegions(boxes, nudge).map((b) => {
+    const copy = {
+      ...b,
+      palette: Array.isArray(b.palette) ? b.palette.slice() : [],
+    };
+    delete copy.storeRef;
+    return copy;
+  });
+}
+
+/**
+ * Place a character/object loaded into the scene.
+ * Indexes 0-16 keep the original 0.04 diagonal from (0.1, 0.1). Later indexes
+ * tile a 0.25x0.20 grid that stays inside the canvas.
+ */
+export function staggerLoadedRegion(index) {
+  const origin = 0.1;
+  const step = 0.04;
+  const w = 0.25;
+  const h = 0.2;
+  const i = Number.isInteger(index) && index >= 0 ? index : 0;
+  const diagonalCount = Math.floor((1 - w - origin) / step) + 1;
+  if (i < diagonalCount) {
+    return normalizeBoxCoords({
+      x: origin + i * step,
+      y: origin + i * step,
+      w,
+      h,
+    });
+  }
+  const extra = i - diagonalCount;
+  const cols = Math.max(1, Math.floor((1 - w) / w) + 1);
+  const rows = Math.max(1, Math.floor((1 - h) / h) + 1);
+  const slot = extra % (cols * rows);
+  const col = slot % cols;
+  const row = Math.floor(slot / cols);
+  return normalizeBoxCoords({ x: col * w, y: row * h, w, h });
 }

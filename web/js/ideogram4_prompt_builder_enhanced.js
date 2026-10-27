@@ -7,7 +7,8 @@ import {
   loadStores, saveStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
 import {
-  cleanPalette, elementToRegion, offsetAddedRegions, regionCoordsFinite,
+  cleanPalette, elementToRegion, offsetAddedRegions, pasteRegions, rectToIdeogramBbox,
+  regionCoordsFinite, staggerLoadedRegion,
 } from "./caption_layout.js";
 
 const { app } = window.comfyAPI.app;
@@ -1527,11 +1528,7 @@ app.registerExtension({
             e.stopPropagation();
             if (!node._clipBoxes?.length) return;
             const newIdxs = [];
-            for (const cb of node._clipBoxes) {
-              const nb = cloneBox(cb);
-              nb.x = clamp01(nb.x + 0.03);
-              nb.y = clamp01(nb.y + 0.03);
-              delete nb.storeRef;
+            for (const nb of pasteRegions(node._clipBoxes.map((b) => cloneBox(b)))) {
               node._boxes.push(nb);
               newIdxs.push(node._boxes.length - 1);
             }
@@ -1660,14 +1657,6 @@ app.registerExtension({
         return widgetString(findW(name)?.value);
       }
 
-      function normBboxJS(b) {
-        const c = (v) => Math.max(0, Math.min(1000, Math.round(v * 1000)));
-        let ymin = c(b.y), xmin = c(b.x), ymax = c(b.y + b.h), xmax = c(b.x + b.w);
-        if (ymin > ymax) [ymin, ymax] = [ymax, ymin];
-        if (xmin > xmax) [xmin, xmax] = [xmax, xmin];
-        return [ymin, xmin, ymax, xmax];
-      }
-
       function buildCaption() {
         const cap = {};
         const hld = getW("high_level_description").trim();
@@ -1684,7 +1673,10 @@ app.registerExtension({
         const elements = node._boxes.map((b) => {
           const etype = b.type === "text" ? "text" : "obj";
           const el = { type: etype };
-          if (!b.nobbox) el.bbox = normBboxJS(b);
+          if (!b.nobbox) {
+            const bbox = rectToIdeogramBbox(b);
+            if (bbox) el.bbox = bbox;
+          }
           if (etype === "text") el.text = b.text || "";
           el.desc = b.desc || "";
           const pal = cleanPalette(b.palette, MAX_ELEM_COLORS);
@@ -2011,10 +2003,9 @@ app.registerExtension({
           const bucket = type === "object" ? stores.objects : stores.characters;
           const data = bucket[name];
           if (!data) return;
-          const offset = node._boxes.length * 0.04;
+          const placed = staggerLoadedRegion(node._boxes.length);
           const nb = {
-            x: clamp01(0.1 + offset), y: clamp01(0.1 + offset),
-            w: 0.25, h: 0.2,
+            x: placed.x, y: placed.y, w: placed.w, h: placed.h,
             type: data.type || "obj",
             text: data.text || "",
             desc: data.desc || "",
