@@ -210,7 +210,14 @@ def save_bg_image_to_temp(guid, image):
             exc, raw_guid,
         )
         return None
-    pil = _tensor_to_pil(image)
+    try:
+        pil = _tensor_to_pil(image)
+    except Exception as exc:
+        _bg_warn(
+            "background image was not saved: could not convert the image tensor (guid=%s): %s",
+            safe_guid, exc,
+        )
+        return None
     if pil is None:
         _bg_warn("background image was not saved: could not convert the image tensor (guid=%s)", safe_guid)
         return None

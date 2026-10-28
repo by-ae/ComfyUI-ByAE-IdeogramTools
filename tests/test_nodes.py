@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from unittest.mock import MagicMock, patch
 
 # conftest.py handles mocking and path setup
 from nodes.ideogram4_nodes import (
@@ -399,6 +400,16 @@ class TestPromptHelpers(unittest.TestCase):
             result = save_bg_image_to_temp("../../etc/passwd", object())
         self.assertIsNone(result)
         self.assertTrue(any("invalid background guid" in line.lower() for line in cm.output))
+
+    def test_save_bg_image_warns_when_conversion_fails(self):
+        guid = "12345678-1234-4abc-8abc-123456789012"
+        image_mod = save_bg_image_to_temp.__globals__["Image"]
+        with patch.object(image_mod, "fromarray", side_effect=ValueError("bad shape")):
+            with self.assertLogs("byae.ideogram.bg", level="WARNING") as cm:
+                result = save_bg_image_to_temp(guid, MagicMock())
+        self.assertIsNone(result)
+        self.assertTrue(any("could not convert" in line.lower() for line in cm.output))
+        self.assertTrue(any("bad shape" in line for line in cm.output))
 
 
 class TestPromptAssembly(unittest.TestCase):
