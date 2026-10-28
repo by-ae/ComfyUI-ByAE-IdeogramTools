@@ -97,9 +97,31 @@ def notify_bg_updated(guid, path):
         _bg_warn("notify failed for %s: %s", path, exc)
 
 
+def _as_text(value):
+    """Caption text. Numbers are kept; other non-strings are dropped.
+
+    A boolean or a list used to reach str.split or iteration and fail the node.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool) or value is None:
+        return ""
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return ""
+        return str(value)
+    return ""
+
+
 def _hex_rgb(h):
-    h = h.lstrip("#")
-    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)) if len(h) == 6 else (255, 255, 255)
+    # _normalize_hex expands #RGB and rejects values that are not #RRGGBB.
+    # int(..., 16) used to raise on a 6-character string that is not hex.
+    norm = _normalize_hex(h)
+    if not norm:
+        return (255, 255, 255)
+    return (int(norm[1:3], 16), int(norm[3:5], 16), int(norm[5:7], 16))
 
 
 def _font(size):
@@ -188,7 +210,14 @@ def save_bg_image_to_temp(guid, image):
             exc, raw_guid,
         )
         return None
-    pil = _tensor_to_pil(image)
+    try:
+        pil = _tensor_to_pil(image)
+    except Exception as exc:
+        _bg_warn(
+            "background image was not saved: could not convert the image tensor (guid=%s): %s",
+            safe_guid, exc,
+        )
+        return None
     if pil is None:
         _bg_warn("background image was not saved: could not convert the image tensor (guid=%s)", safe_guid)
         return None
@@ -243,9 +272,11 @@ def _render_preview(boxes, width, height, bg_guid="", background_opacity=0.5):
         draw.rectangle([x1, y1, x1 + tw + 6, y1 + fs + 2], fill=(r, g, b, 255))
         draw.text((x1 + 3, y1 + 1), tag, fill=(0, 0, 0, 255), font=tag_font)
 
-        body = box.get("desc", "") or ""
-        if etype == "text" and box.get("text"):
-            body = '"%s"%s' % (box["text"], " — " + body if body else "")
+        body = _as_text(box.get("desc", ""))
+        if etype == "text":
+            text = _as_text(box.get("text", ""))
+            if text:
+                body = '"%s"%s' % (text, " — " + body if body else "")
         if body and (x2 - x1) > 8:
             ty = y1 + fs + 5
             for line in _wrap(draw, body, font, x2 - x1 - 8):
@@ -254,9 +285,9 @@ def _render_preview(boxes, width, height, bg_guid="", background_opacity=0.5):
                 draw.text((x1 + 4, ty), line, fill=(255, 255, 255, 255), font=font)
                 ty += lh
 
-        palette = [c for c in (box.get("palette") or []) if c]
+        palette = _palette(box.get("palette"), 5)
         ds = max(5, fs - 2)
-        for p, hexc in enumerate(palette[:5]):
+        for p, hexc in enumerate(palette):
             dx = x1 + 2 + p * (ds + 2)
             if dx + ds > x2:
                 break
@@ -358,7 +389,7 @@ def _normalize_hex(color):
 def _palette(colors, limit=None):
     if isinstance(colors, dict):
         colors = list(colors.values())
-    elif not colors:
+    elif not isinstance(colors, (list, tuple)):
         return []
     out = []
     for color in colors:
@@ -401,8 +432,8 @@ def _elements_from_boxes(boxes):
             if bbox is not None:
                 elem["bbox"] = bbox
         if etype == "text":
-            elem["text"] = box.get("text", "")
-        elem["desc"] = box.get("desc", "")
+            elem["text"] = _as_text(box.get("text", ""))
+        elem["desc"] = _as_text(box.get("desc", ""))
         palette = _palette(box.get("palette", []), ELEMENT_PALETTE_MAX)
         if palette:
             elem["color_palette"] = palette
@@ -547,9 +578,12 @@ folder and picked up automatically by the editor.""",
                         io.String.Input("art_style", default=""),
                     ]),
                 ]),
-                io.String.Input("aesthetics", default="", tooltip="Style descriptor (blank = omitted)."),
-                io.String.Input("lighting", default="", tooltip="Style descriptor (blank = omitted)."),
-                io.String.Input("medium", default="", tooltip="Style descriptor (blank = omitted)."),
+                io.String.Input("aesthetics", default="",
+                                tooltip="Style descriptor. Included even when blank; the style block is omitted only when style is none."),
+                io.String.Input("lighting", default="",
+                                tooltip="Style descriptor. Included even when blank; the style block is omitted only when style is none."),
+                io.String.Input("medium", default="",
+                                tooltip="Style descriptor. Included even when blank; the style block is omitted only when style is none."),
                 io.String.Input("import_json", default="", optional=True, force_input=True,
                                 tooltip="Optional: a full caption JSON. When connected, overrides the editor."),
                 io.Float.Input("background_opacity", default=0.5, min=0.0, max=1.0, step=0.05,

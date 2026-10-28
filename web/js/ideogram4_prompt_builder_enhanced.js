@@ -7,8 +7,9 @@ import {
   loadStores, saveStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
 import {
-  cleanPalette, elementToRegion, offsetAddedRegions, pasteRegions, rectToIdeogramBbox,
-  regionCoordsFinite, staggerLoadedRegion,
+  captionText, cleanPalette, dimsFromAspect, elementToRegion, offsetAddedRegions, pasteRegions,
+  rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
+  transformBoxesContentUniform,
 } from "./caption_layout.js";
 
 const { app } = window.comfyAPI.app;
@@ -87,18 +88,6 @@ function clampToMaxCanvas(w, h) {
 
 function boxColor(index) { return BBOX_PALETTE[index % BBOX_PALETTE.length]; }
 
-const SCALE_ANCHORS = {
-  center: [0.5, 0.5],
-  "top-left": [0, 0],
-  top: [0.5, 0],
-  "top-right": [1, 0],
-  "center-left": [0, 0.5],
-  "center-right": [1, 0.5],
-  "bottom-left": [0, 1],
-  bottom: [0.5, 1],
-  "bottom-right": [1, 1],
-};
-
 function clamp01(v) { return Math.max(0, Math.min(1, v)); }
 
 function normalizeBoxCoords(b) {
@@ -108,71 +97,6 @@ function normalizeBoxCoords(b) {
   x = clamp01(x); y = clamp01(y);
   w = Math.min(w, 1 - x); h = Math.min(h, 1 - y);
   return { ...b, x, y, w: Math.max(0, w), h: Math.max(0, h) };
-}
-
-function dimsFromAspect(aspectStr) {
-  const m = String(aspectStr || "").trim().match(/^(\d+(?:\.\d+)?)\s*[:/x×]\s*(\d+(?:\.\d+)?)$/i);
-  if (!m) return null;
-  const aw = parseFloat(m[1]), ah = parseFloat(m[2]);
-  if (!(aw > 0) || !(ah > 0)) return null;
-  if (aw >= ah) return { w: 1024, h: Math.max(1, Math.round(1024 * ah / aw)) };
-  return { w: Math.max(1, Math.round(1024 * aw / ah)), h: 1024 };
-}
-
-function contentBoundsPx(boxes, layoutW, layoutH) {
-  if (!boxes?.length) return null;
-  let minX = 1, minY = 1, maxX = 0, maxY = 0;
-  let any = false;
-  for (const b of boxes) {
-    if (typeof b.x !== "number" || typeof b.w !== "number") continue;
-    any = true;
-    minX = Math.min(minX, b.x);
-    minY = Math.min(minY, b.y);
-    maxX = Math.max(maxX, b.x + b.w);
-    maxY = Math.max(maxY, b.y + b.h);
-  }
-  if (!any || maxX <= minX || maxY <= minY) return null;
-  return {
-    minX: minX * layoutW,
-    minY: minY * layoutH,
-    maxX: maxX * layoutW,
-    maxY: maxY * layoutH,
-    w: (maxX - minX) * layoutW,
-    h: (maxY - minY) * layoutH,
-  };
-}
-
-function anchorPointOnRect(rect, mode) {
-  const [ax, ay] = SCALE_ANCHORS[mode] || [0.5, 0.5];
-  return [rect.minX + ax * rect.w, rect.minY + ay * rect.h];
-}
-
-function anchorPointOnCanvas(canvasW, canvasH, mode) {
-  const [ax, ay] = SCALE_ANCHORS[mode] || [0.5, 0.5];
-  return [ax * canvasW, ay * canvasH];
-}
-
-/** Uniform scale of region content to fit the new aspect; blank canvas margins are cropped, not scaled. */
-function transformBoxesContentUniform(boxes, oldW, oldH, newW, newH, mode) {
-  const anchor = SCALE_ANCHORS[mode];
-  if (!anchor || oldW <= 0 || oldH <= 0 || newW <= 0 || newH <= 0) return boxes;
-  const content = contentBoundsPx(boxes, oldW, oldH);
-  if (!content) return boxes;
-
-  const s = Math.min(1, Math.min(newW / content.w, newH / content.h));
-  const anchorOld = anchorPointOnRect(content, mode);
-  const anchorNew = anchorPointOnCanvas(newW, newH, mode);
-
-  return boxes.map((box) => {
-    const ox = box.x * oldW, oy = box.y * oldH, ow = box.w * oldW, oh = box.h * oldH;
-    return normalizeBoxCoords({
-      ...box,
-      x: (anchorNew[0] + s * (ox - anchorOld[0])) / newW,
-      y: (anchorNew[1] + s * (oy - anchorOld[1])) / newH,
-      w: (s * ow) / newW,
-      h: (s * oh) / newH,
-    });
-  });
 }
 
 function cloneBox(b) {
@@ -406,7 +330,7 @@ function showPasteJsonSourceModal(onOk) {
 
   const hint = document.createElement("div");
   hint.style.cssText = "color:#999; font-size:11px; line-height:1.35;";
-  hint.textContent = "How was the pasted layout sized? Uniform scale modes use this when remapping regions.";
+  hint.textContent = "Don't care stretches regions to this canvas. A source size or aspect fits them without stretching.";
   modal.appendChild(hint);
 
   const srcRow = document.createElement("div");
@@ -1677,8 +1601,8 @@ app.registerExtension({
             const bbox = rectToIdeogramBbox(b);
             if (bbox) el.bbox = bbox;
           }
-          if (etype === "text") el.text = b.text || "";
-          el.desc = b.desc || "";
+          if (etype === "text") el.text = captionText(b.text);
+          el.desc = captionText(b.desc);
           const pal = cleanPalette(b.palette, MAX_ELEM_COLORS);
           if (pal.length) el.color_palette = pal;
           return el;
@@ -1731,25 +1655,16 @@ app.registerExtension({
       }
 
       function remapImportedBoxes(boxes, importOpts = { source: "stretch" }) {
-        if (importOpts.source === "stretch") return boxes;
         const { w: newW, h: newH } = readLayoutDimsFromDom();
-        let srcW = newW, srcH = newH;
-        if (importOpts.source === "same") {
-          srcW = newW;
-          srcH = newH;
-        } else if (importOpts.source === "dimensions") {
-          srcW = Math.max(1, importOpts.srcW || 1024);
-          srcH = Math.max(1, importOpts.srcH || 1024);
-        } else if (importOpts.source === "aspect") {
-          const dims = dimsFromAspect(importOpts.aspect || "1:1");
-          if (!dims) return boxes;
-          srcW = dims.w;
-          srcH = dims.h;
-        }
-        if (srcW === newW && srcH === newH) return boxes;
-        const mode = scaleSel.value || "stretch";
-        if (mode === "stretch") return boxes;
-        return transformBoxesContentUniform(boxes, srcW, srcH, newW, newH, mode);
+        return remapImportedRegions(boxes, {
+          source: importOpts.source,
+          srcW: importOpts.srcW,
+          srcH: importOpts.srcH,
+          aspect: importOpts.aspect,
+          destW: newW,
+          destH: newH,
+          mode: scaleSel.value || "stretch",
+        });
       }
 
       function applyCaption(cap, importOpts = { source: "stretch" }) {

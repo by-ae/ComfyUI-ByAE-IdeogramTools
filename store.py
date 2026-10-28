@@ -80,7 +80,9 @@ def _read_json(path: str) -> dict:
     if not os.path.isfile(path):
         return {}
     try:
-        with open(path, encoding="utf-8") as f:
+        # utf-8-sig ignores one leading byte-order mark. utf-8 rejects it, and
+        # that used to move an otherwise valid bucket aside as corrupt.
+        with open(path, encoding="utf-8-sig") as f:
             data = json.load(f)
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         _backup_unreadable(path, e)

@@ -71,12 +71,19 @@ export function fallbackRegion(index) {
   };
 }
 
+/** Caption text. Finite numbers are kept; other non-strings are dropped. */
+export function captionText(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
 export function elementToRegion(el, idx) {
   if (!el || typeof el !== "object") return null;
   const box = {
     type: el.type === "text" ? "text" : "obj",
-    text: el.text || "",
-    desc: el.desc || "",
+    text: captionText(el.text),
+    desc: captionText(el.desc),
     palette: Array.isArray(el.color_palette) ? el.color_palette.slice() : [],
   };
   const rect = ideogramBboxToRect(el.bbox);
@@ -182,4 +189,120 @@ export function staggerLoadedRegion(index) {
   const col = slot % cols;
   const row = Math.floor(slot / cols);
   return normalizeBoxCoords({ x: col * w, y: row * h, w, h });
+}
+
+const SCALE_ANCHORS = {
+  center: [0.5, 0.5],
+  "top-left": [0, 0],
+  top: [0.5, 0],
+  "top-right": [1, 0],
+  "center-left": [0, 0.5],
+  "center-right": [1, 0.5],
+  "bottom-left": [0, 1],
+  bottom: [0.5, 1],
+  "bottom-right": [1, 1],
+};
+
+export function dimsFromAspect(aspectStr) {
+  const m = String(aspectStr || "").trim().match(/^(\d+(?:\.\d+)?)\s*[:/x×]\s*(\d+(?:\.\d+)?)$/i);
+  if (!m) return null;
+  const aw = parseFloat(m[1]);
+  const ah = parseFloat(m[2]);
+  if (!(aw > 0) || !(ah > 0)) return null;
+  if (aw >= ah) return { w: 1024, h: Math.max(1, Math.round((1024 * ah) / aw)) };
+  return { w: Math.max(1, Math.round((1024 * aw) / ah)), h: 1024 };
+}
+
+function contentBoundsPx(boxes, layoutW, layoutH) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let any = false;
+  for (const b of boxes || []) {
+    if (!regionCoordsFinite(b)) continue;
+    any = true;
+    minX = Math.min(minX, b.x);
+    minY = Math.min(minY, b.y);
+    maxX = Math.max(maxX, b.x + b.w);
+    maxY = Math.max(maxY, b.y + b.h);
+  }
+  if (!any || !(maxX > minX) || !(maxY > minY)) return null;
+  return {
+    minX: minX * layoutW,
+    minY: minY * layoutH,
+    maxX: maxX * layoutW,
+    maxY: maxY * layoutH,
+    w: (maxX - minX) * layoutW,
+    h: (maxY - minY) * layoutH,
+  };
+}
+
+function anchorPointOnRect(rect, mode) {
+  const [ax, ay] = SCALE_ANCHORS[mode] || [0.5, 0.5];
+  return [rect.minX + ax * rect.w, rect.minY + ay * rect.h];
+}
+
+function anchorPointOnCanvas(canvasW, canvasH, mode) {
+  const [ax, ay] = SCALE_ANCHORS[mode] || [0.5, 0.5];
+  return [ax * canvasW, ay * canvasH];
+}
+
+/** Uniform scale of region content. Blank margins are cropped; content is not enlarged. */
+export function transformBoxesContentUniform(boxes, oldW, oldH, newW, newH, mode) {
+  const anchor = SCALE_ANCHORS[mode];
+  if (!anchor || oldW <= 0 || oldH <= 0 || newW <= 0 || newH <= 0) return boxes;
+  const content = contentBoundsPx(boxes, oldW, oldH);
+  if (!content) return boxes;
+
+  const s = Math.min(1, Math.min(newW / content.w, newH / content.h));
+  const anchorOld = anchorPointOnRect(content, mode);
+  const anchorNew = anchorPointOnCanvas(newW, newH, mode);
+
+  return boxes.map((box) => {
+    const ox = box.x * oldW;
+    const oy = box.y * oldH;
+    const ow = box.w * oldW;
+    const oh = box.h * oldH;
+    return normalizeBoxCoords({
+      ...box,
+      x: (anchorNew[0] + s * (ox - anchorOld[0])) / newW,
+      y: (anchorNew[1] + s * (oy - anchorOld[1])) / newH,
+      w: (s * ow) / newW,
+      h: (s * oh) / newH,
+    });
+  });
+}
+
+/**
+ * Map pasted regions from a source canvas onto destW x destH.
+ * "stretch" keeps normalized coordinates. An anchor mode pins a uniform fit.
+ * Scale mode "stretch" centers that fit: the paste dialog's Don't care option
+ * is the path that leaves normalized coordinates unchanged.
+ */
+export function remapImportedRegions(boxes, opts = {}) {
+  const list = boxes || [];
+  const source = opts.source || "stretch";
+  if (source === "stretch") return list;
+  const destW = opts.destW;
+  const destH = opts.destH;
+  if (!(destW > 0) || !(destH > 0)) return list;
+  let srcW = destW;
+  let srcH = destH;
+  if (source === "dimensions") {
+    srcW = Number(opts.srcW);
+    srcH = Number(opts.srcH);
+    if (!(srcW > 0)) srcW = 1024;
+    if (!(srcH > 0)) srcH = 1024;
+  } else if (source === "aspect") {
+    const dims = dimsFromAspect(opts.aspect || "1:1");
+    if (!dims) return list;
+    srcW = dims.w;
+    srcH = dims.h;
+  } else if (source !== "same") {
+    return list;
+  }
+  if (srcW === destW && srcH === destH) return list;
+  const mode = Object.prototype.hasOwnProperty.call(SCALE_ANCHORS, opts.mode) ? opts.mode : "center";
+  return transformBoxesContentUniform(list, srcW, srcH, destW, destH, mode);
 }
