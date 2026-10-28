@@ -5,9 +5,9 @@ import unittest
 
 # conftest.py handles mocking and path setup
 from nodes.ideogram4_nodes import (
-    sanitize_bg_guid, _norm_bbox, _palette, _dumps, _parse_json_list,
+    sanitize_bg_guid, _norm_bbox, _palette, _hex_rgb, _dumps, _parse_json_list,
     _caption_to_boxes, _coerce_layout_int, _coerce_opacity,
-    _elements_from_boxes, _preview_edges,
+    _elements_from_boxes, _preview_edges, _render_preview, ImageDraw,
     save_bg_image_to_temp,
 )
 
@@ -98,6 +98,42 @@ class TestPromptHelpers(unittest.TestCase):
             (10, 10, 40, 30),
         )
 
+    def test_elements_keep_schema_types_when_fields_are_not_strings(self):
+        elements = _elements_from_boxes([
+            {
+                "type": "text", "text": 12, "desc": None, "palette": True,
+                "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4,
+            },
+            {
+                "type": "obj", "desc": 5, "palette": ["#abc", "#GG0000", 1],
+                "x": 0.0, "y": 0.0, "w": 0.2, "h": 0.2,
+            },
+            {
+                "type": "obj", "desc": "a circle", "palette": ["#ff00aa"],
+                "x": 0.5, "y": 0.5, "w": 0.2, "h": 0.2,
+            },
+        ])
+        self.assertEqual(elements[0]["text"], "12")
+        self.assertEqual(elements[0]["desc"], "")
+        self.assertNotIn("color_palette", elements[0])
+        self.assertEqual(list(elements[0].keys()), ["type", "bbox", "text", "desc"])
+        self.assertEqual(elements[1]["desc"], "5")
+        self.assertEqual(elements[1]["color_palette"], ["#AABBCC"])
+        self.assertEqual(list(elements[1].keys()), ["type", "bbox", "desc", "color_palette"])
+        self.assertEqual(elements[2]["desc"], "a circle")
+        self.assertEqual(elements[2]["color_palette"], ["#FF00AA"])
+
+    def test_preview_does_not_raise_on_bad_region_fields(self):
+        ImageDraw.Draw.return_value.textlength.return_value = 0
+        preview = _render_preview([
+            {
+                "type": "text", "text": 7, "desc": 5,
+                "palette": ["#abc", "#GG0000", 1, " #00ff00 "],
+                "x": 0.1, "y": 0.1, "w": 0.4, "h": 0.4,
+            },
+        ], 128, 128)
+        self.assertIsNotNone(preview)
+
     def test_palette_filters_empty_strings(self):
         colors = {"c1": "#FF0000", "c2": "", "c3": "#00FF00", "c4": None}
         result = _palette(colors)
@@ -117,6 +153,18 @@ class TestPromptHelpers(unittest.TestCase):
         colors = ["#{:06X}".format(i) for i in range(20)]
         self.assertEqual(len(_palette(colors, 16)), 16)
         self.assertEqual(_palette(colors, 5), ["#{:06X}".format(i) for i in range(5)])
+
+    def test_palette_ignores_values_that_are_not_color_lists(self):
+        self.assertEqual(_palette(True), [])
+        self.assertEqual(_palette(5), [])
+        self.assertEqual(_palette("#FF0000"), [])
+        self.assertEqual(_palette(None), [])
+
+    def test_hex_rgb_expands_short_hex_and_rejects_invalid(self):
+        self.assertEqual(_hex_rgb("#abc"), (0xAA, 0xBB, 0xCC))
+        self.assertEqual(_hex_rgb(" #aabbcc "), (0xAA, 0xBB, 0xCC))
+        self.assertEqual(_hex_rgb("#GG0000"), (255, 255, 255))
+        self.assertEqual(_hex_rgb(1), (255, 255, 255))
 
     def test_dumps_string(self):
         result = _dumps("hello")

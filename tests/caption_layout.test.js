@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  captionText,
   cleanPalette,
   elementToRegion,
   fallbackRegion,
@@ -30,6 +31,15 @@ describe("ideogram bbox import", () => {
     assert.equal(box.w, 0.2);
     assert.equal(box.h, 0.2);
     assert.equal(box.nobbox, undefined);
+  });
+
+  it("turns numeric caption text into strings and drops other types", () => {
+    const box = elementToRegion({ type: "text", text: 12, desc: 5, bbox: [0, 0, 10, 10] }, 0);
+    assert.equal(box.text, "12");
+    assert.equal(box.desc, "5");
+    assert.equal(captionText(true), "");
+    assert.equal(captionText(Number.NaN), "");
+    assert.equal(captionText(" keep "), " keep ");
   });
 
   it("swaps inverted axes so the region can be hit-tested", () => {

@@ -71,12 +71,19 @@ export function fallbackRegion(index) {
   };
 }
 
+/** Caption text. Finite numbers are kept; other non-strings are dropped. */
+export function captionText(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
 export function elementToRegion(el, idx) {
   if (!el || typeof el !== "object") return null;
   const box = {
     type: el.type === "text" ? "text" : "obj",
-    text: el.text || "",
-    desc: el.desc || "",
+    text: captionText(el.text),
+    desc: captionText(el.desc),
     palette: Array.isArray(el.color_palette) ? el.color_palette.slice() : [],
   };
   const rect = ideogramBboxToRect(el.bbox);

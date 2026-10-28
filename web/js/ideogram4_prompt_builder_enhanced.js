@@ -7,7 +7,7 @@ import {
   loadStores, saveStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
 import {
-  cleanPalette, elementToRegion, offsetAddedRegions, pasteRegions, rectToIdeogramBbox,
+  captionText, cleanPalette, elementToRegion, offsetAddedRegions, pasteRegions, rectToIdeogramBbox,
   regionCoordsFinite, staggerLoadedRegion,
 } from "./caption_layout.js";
 
@@ -1677,8 +1677,8 @@ app.registerExtension({
             const bbox = rectToIdeogramBbox(b);
             if (bbox) el.bbox = bbox;
           }
-          if (etype === "text") el.text = b.text || "";
-          el.desc = b.desc || "";
+          if (etype === "text") el.text = captionText(b.text);
+          el.desc = captionText(b.desc);
           const pal = cleanPalette(b.palette, MAX_ELEM_COLORS);
           if (pal.length) el.color_palette = pal;
           return el;
