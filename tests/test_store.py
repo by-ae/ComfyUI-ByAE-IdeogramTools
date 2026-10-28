@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 # conftest.py installs the folder_paths mock before store is imported.
 # Replacing sys.modules['folder_paths'] here binds a second mock that the
 # route tests then configure, while store keeps writing through the original.
+import store
 from store import _validate_name, load_bucket, save_entry, delete_entry
 
 
@@ -191,6 +192,36 @@ class TestStore(unittest.TestCase):
         self.assertEqual(len(extras), 1)
         with open(os.path.join(store_dir, extras[0]), encoding="utf-8") as f:
             self.assertEqual(f.read(), "{not json")
+
+    def test_utf8_bom_is_loaded_without_backup(self):
+        # Editors sometimes write a leading byte-order mark. json.load rejects
+        # that as corrupt, which used to move the whole bucket aside.
+        bucket_path = os.path.join(self.temp_dir, "byae-ideogram-tools", "characters.json")
+        os.makedirs(os.path.dirname(bucket_path), exist_ok=True)
+        payload = '{"Hero": {"desc": "kept"}, "角色": {"desc": "unicode"}}'
+        with open(bucket_path, "wb") as f:
+            f.write(b"\xef\xbb\xbf" + payload.encode("utf-8"))
+
+        with self.assertNoLogs(store.logger, level="WARNING"):
+            bucket = load_bucket("characters")
+
+        self.assertEqual(bucket["Hero"]["desc"], "kept")
+        self.assertEqual(bucket["角色"]["desc"], "unicode")
+        self.assertTrue(os.path.exists(bucket_path))
+        backups = [
+            name for name in os.listdir(os.path.dirname(bucket_path))
+            if name.startswith("characters.json.corrupt-")
+        ]
+        self.assertEqual(backups, [])
+
+        save_entry("characters", "Next", {"desc": "added"})
+        reloaded = load_bucket("characters")
+        self.assertEqual(reloaded["Hero"]["desc"], "kept")
+        self.assertEqual(reloaded["Next"]["desc"], "added")
+        with open(bucket_path, "rb") as f:
+            saved = f.read()
+        self.assertFalse(saved.startswith(b"\xef\xbb\xbf"))
+        self.assertIn("Hero".encode("utf-8"), saved)
 
     def test_save_works_after_corrupt_file_recovery(self):
         # Create corrupt file
