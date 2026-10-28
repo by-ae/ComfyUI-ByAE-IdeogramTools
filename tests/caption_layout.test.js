@@ -5,13 +5,16 @@ import {
   captionText,
   cleanPalette,
   elementToRegion,
+  dimsFromAspect,
   fallbackRegion,
   ideogramBboxToRect,
   offsetAddedRegions,
   pasteRegions,
   rectToIdeogramBbox,
   regionCoordsFinite,
+  remapImportedRegions,
   staggerLoadedRegion,
+  transformBoxesContentUniform,
 } from "../web/js/caption_layout.js";
 
 describe("ideogram bbox import", () => {
@@ -174,6 +177,86 @@ describe("pasted regions", () => {
     placed[0].palette.push("#000000");
     assert.deepEqual(src[0].palette, ["#FFFFFF"]);
     assert.deepEqual(src[0].storeRef, { type: "character", name: "Ada" });
+  });
+});
+
+describe("pasted caption layout", () => {
+  const box = { x: 0, y: 0, w: 0.25, h: 0.25, type: "obj", desc: "corner" };
+
+  it("leaves normalized coordinates alone when the source size does not matter", () => {
+    const same = remapImportedRegions([box], {
+      source: "stretch", destW: 512, destH: 512, mode: "center",
+    });
+    assert.equal(same[0].x, 0);
+    assert.equal(same[0].w, 0.25);
+    const matched = remapImportedRegions([box], {
+      source: "dimensions", srcW: 512, srcH: 512, destW: 512, destH: 512, mode: "center",
+    });
+    assert.equal(matched[0].w, 0.25);
+  });
+
+  it("fits a source canvas onto the destination even when scale mode is stretch", () => {
+    // 256px box at the origin of a 1024 canvas, placed on a 512 canvas.
+    // Stretch used to ignore the source size. The default scale mode is stretch,
+    // so the dialog's dimension choice did nothing.
+    const placed = remapImportedRegions([box], {
+      source: "dimensions",
+      srcW: 1024,
+      srcH: 1024,
+      destW: 512,
+      destH: 512,
+      mode: "stretch",
+    });
+    near(placed[0].x, 0.25);
+    near(placed[0].y, 0.25);
+    near(placed[0].w, 0.5);
+    near(placed[0].h, 0.5);
+    assert.equal(placed[0].desc, "corner");
+  });
+
+  it("keeps an anchor mode when the source canvas is a different size", () => {
+    const placed = remapImportedRegions([box], {
+      source: "dimensions",
+      srcW: 1024,
+      srcH: 1024,
+      destW: 512,
+      destH: 512,
+      mode: "top-left",
+    });
+    near(placed[0].x, 0);
+    near(placed[0].y, 0);
+    near(placed[0].w, 0.5);
+    near(placed[0].h, 0.5);
+  });
+
+  it("uses an aspect ratio as the source canvas", () => {
+    assert.deepEqual(dimsFromAspect("16:9"), { w: 1024, h: 576 });
+    assert.equal(dimsFromAspect("nope"), null);
+    const wide = { x: 0, y: 0, w: 1, h: 1, desc: "full" };
+    const placed = remapImportedRegions([wide], {
+      source: "aspect",
+      aspect: "2:1",
+      destW: 512,
+      destH: 512,
+      mode: "center",
+    });
+    // Source is 1024x512, content fills it, destination is square.
+    // Uniform fit is limited by height: 512/512 = 1, width scale 512/1024 = 0.5, s = 0.5.
+    near(placed[0].w, 1);
+    near(placed[0].h, 0.5);
+    near(placed[0].x, 0);
+    near(placed[0].y, 0.25);
+  });
+
+  it("does not let one bad coordinate destroy the other regions", () => {
+    const good = { x: 0.25, y: 0.25, w: 0.5, h: 0.5, desc: "ok" };
+    const bad = { x: 0.1, y: Number.NaN, w: 0.2, h: 0.2, desc: "bad" };
+    const placed = transformBoxesContentUniform([good, bad], 1024, 1024, 512, 512, "center");
+    near(placed[0].x, 0);
+    near(placed[0].y, 0);
+    near(placed[0].w, 1);
+    near(placed[0].h, 1);
+    assert.equal(placed[1].desc, "bad");
   });
 });
 
