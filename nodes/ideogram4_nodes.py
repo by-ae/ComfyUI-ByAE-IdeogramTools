@@ -167,11 +167,54 @@ def _coerce_opacity(value, default=0.5):
         return default
 
 
+def _uint8_frame_kind(shape):
+    """How to open one HWC frame. Unknown shapes stay on the RGB path.
+
+    ComfyUI documents IMAGE as [B,H,W,C] with three channels. Pillow still
+    rejects mode RGB for [H,W], [H,W,1], and [H,W,4], which is what a mask
+    or an image that kept its alpha looks like.
+    """
+    if (
+        not isinstance(shape, tuple)
+        or not shape
+        or not all(
+            isinstance(n, int) and not isinstance(n, bool) and n > 0 for n in shape
+        )
+    ):
+        return "rgb"
+    if len(shape) == 2:
+        return "gray"
+    if len(shape) == 3 and shape[-1] == 4:
+        return "rgba"
+    if len(shape) == 3 and shape[-1] == 1:
+        return "gray1"
+    return "rgb"
+
+
+def _rgb_image_from_uint8(arr):
+    """RGB image for the temp PNG. Alpha is composited onto black.
+
+    The editor draws that PNG over a black canvas, so a transparent pixel
+    should become black rather than keep an unrelated RGB value.
+    """
+    kind = _uint8_frame_kind(getattr(arr, "shape", None))
+    if kind == "rgba":
+        rgba = Image.fromarray(arr, mode="RGBA")
+        black = Image.new("RGBA", rgba.size, (0, 0, 0, 255))
+        return Image.alpha_composite(black, rgba).convert("RGB")
+    if kind == "gray":
+        return Image.fromarray(arr, mode="L").convert("RGB")
+    if kind == "gray1":
+        flat = arr.reshape(arr.shape[0], arr.shape[1])
+        return Image.fromarray(flat, mode="L").convert("RGB")
+    return Image.fromarray(arr, mode="RGB")
+
+
 def _tensor_to_pil(image):
     if image is None:
         return None
     arr = (image[0].detach().cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
-    return Image.fromarray(arr, mode="RGB")
+    return _rgb_image_from_uint8(arr)
 
 
 def _load_bg_from_temp(guid):

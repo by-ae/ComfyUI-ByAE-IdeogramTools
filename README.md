@@ -77,6 +77,7 @@ Load shows the request error (for example `HTTP 500`) when the store cannot be r
 
 - Verify the `guid` output from the builder is connected to Preview BG Update's `guid` input
 - Check the ComfyUI console for a line starting with `[ByAE Ideogram BG]`. A failed save names the reason: no image, an empty or invalid guid, an image that could not be converted, or a disk write error
+- RGBA frames are composited onto black, and single-channel frames are expanded to RGB, before the file is written. The conversion warning is for a tensor that still cannot be turned into an image
 - The temp directory must be writable (usually `ComfyUI/temp`)
 
 ### Saved workflows break after updating
