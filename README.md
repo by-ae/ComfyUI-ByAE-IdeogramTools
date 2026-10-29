@@ -15,8 +15,8 @@ I may add other Ideogram 4 tools here in future, hence the name.
 
 ## Improvements over the KJ builder
 
-- **Character/Object store** — Save, Save As, and Load named characters/objects
-- **Save/Load entire scenes** — save and restore full scenes (boxes, overview, aesthetic, style colors, and the rest); add imported boxes (selected by default) or wipe and replace the entire scene
+- **Character/Object store** — Save, Save As, Load, and Delete named characters/objects
+- **Save/Load entire scenes** — save and restore full scenes (boxes, overview, aesthetic, style colors, and the rest); add imported boxes (selected by default) or wipe and replace the entire scene. Delete removes a saved scene
 - **Multi-select (Shift+click individual or Shift-drag to select and move/scale them all)** — Shift+drag a selection rectangle; any partially overlapping box is included, the entire selection can be moved around or scaled uniformly on the sides or corners. Shift+click a box to add or remove it from the selection
 - **Live background image** — Preview BG Update pushes a workflow image onto the builder canvas; opacity slider blends it over black
 - **Copy and paste** — Ctrl+C / Ctrl+V for selected boxes (geometry and field data)

@@ -4,7 +4,7 @@ import {
   stripInternalPromptFields, makeUUID,
 } from "./utility.js";
 import {
-  loadStores, saveStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
+  loadStores, saveStoreEntry, deleteStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
 import {
   captionText, cleanPalette, dimsFromAspect, elementToRegion, offsetAddedRegions, pasteRegions,
@@ -219,13 +219,9 @@ function sortStoreNames(names) {
   return [...names].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
-function showCharObjLoadModal(stores, onOk) {
+function showCharObjLoadModal(stores, onOk, onDeleted) {
   const charNames = sortStoreNames(Object.keys(stores.characters));
   const objNames = sortStoreNames(Object.keys(stores.objects));
-  const buckets = {
-    character: charNames,
-    object: objNames,
-  };
   const categories = [];
   if (charNames.length) categories.push({ value: "character", label: "Character" });
   if (objNames.length) categories.push({ value: "object", label: "Object" });
@@ -273,9 +269,14 @@ function showCharObjLoadModal(stores, onOk) {
   nameRow.appendChild(nameSel);
   modal.appendChild(nameRow);
 
+  function namesFor(type) {
+    const key = type === "object" ? "objects" : "characters";
+    return sortStoreNames(Object.keys(stores[key] || {}));
+  }
+
   function refillNames() {
     const type = catSel.value;
-    const names = buckets[type] || [];
+    const names = namesFor(type);
     nameLbl.textContent = type === "object" ? "Object" : "Character";
     nameSel.innerHTML = "";
     for (const n of names) {
@@ -287,17 +288,42 @@ function showCharObjLoadModal(stores, onOk) {
     nameSel.disabled = !names.length;
   }
 
+  function rebuildCategories() {
+    const prev = catSel.value;
+    const categories = [];
+    if (Object.keys(stores.characters || {}).length) categories.push({ value: "character", label: "Character" });
+    if (Object.keys(stores.objects || {}).length) categories.push({ value: "object", label: "Object" });
+    if (!categories.length) {
+      close();
+      alert("No saved characters or objects.");
+      return;
+    }
+    catSel.innerHTML = "";
+    for (const c of categories) {
+      const o = document.createElement("option");
+      o.value = c.value;
+      o.textContent = c.label;
+      catSel.appendChild(o);
+    }
+    catSel.value = categories.some((c) => c.value === prev) ? prev : categories[0].value;
+    refillNames();
+  }
+
   catSel.addEventListener("change", refillNames);
   refillNames();
 
   const actions = document.createElement("div");
   actions.className = "byae-ideo-modal-actions";
+  const delBtn = document.createElement("button");
+  delBtn.className = "byae-ideo-btn";
+  delBtn.textContent = "Delete";
   const cancelBtn = document.createElement("button");
   cancelBtn.className = "byae-ideo-btn";
   cancelBtn.textContent = "Cancel";
   const okBtn = document.createElement("button");
   okBtn.className = "byae-ideo-btn active";
   okBtn.textContent = "Load";
+  actions.appendChild(delBtn);
   actions.appendChild(cancelBtn);
   actions.appendChild(okBtn);
   modal.appendChild(actions);
@@ -307,6 +333,23 @@ function showCharObjLoadModal(stores, onOk) {
   const close = () => back.remove();
   cancelBtn.onclick = close;
   back.addEventListener("mousedown", (e) => { if (e.target === back) close(); });
+  delBtn.onclick = async () => {
+    const type = catSel.value;
+    const name = nameSel.value;
+    if (!name) return;
+    const label = type === "object" ? "object" : "character";
+    if (!confirm(`Delete saved ${label} "${name}"? This cannot be undone.`)) return;
+    const bucket = type === "object" ? "objects" : "characters";
+    try {
+      await deleteStoreEntry(bucket, name);
+    } catch (e) {
+      alert("Failed to delete: " + e.message);
+      return;
+    }
+    delete stores[bucket][name];
+    onDeleted?.(type, name);
+    rebuildCategories();
+  };
   okBtn.onclick = () => {
     const type = catSel.value;
     const name = nameSel.value;
@@ -315,6 +358,120 @@ function showCharObjLoadModal(stores, onOk) {
     onOk({ type, name });
   };
   catSel.focus();
+}
+
+function showSceneLoadModal(stores, onLoad) {
+  const names = () => Object.keys(stores.scenes || {}).sort();
+  if (!names().length) {
+    alert("No saved scenes.");
+    return;
+  }
+
+  const back = document.createElement("div");
+  back.className = "byae-ideo-modal-back";
+  const modal = document.createElement("div");
+  modal.className = "byae-ideo-modal";
+  modal.style.minWidth = "280px";
+
+  const h = document.createElement("div");
+  h.textContent = "Load Scene";
+  h.style.fontWeight = "bold";
+  modal.appendChild(h);
+
+  const nameRow = document.createElement("div");
+  nameRow.style.display = "flex";
+  nameRow.style.flexDirection = "column";
+  nameRow.style.gap = "3px";
+  const nameLbl = document.createElement("label");
+  nameLbl.textContent = "Scene";
+  const nameSel = document.createElement("select");
+  nameRow.appendChild(nameLbl);
+  nameRow.appendChild(nameSel);
+  modal.appendChild(nameRow);
+
+  const modeRow = document.createElement("div");
+  modeRow.style.display = "flex";
+  modeRow.style.flexDirection = "column";
+  modeRow.style.gap = "3px";
+  const modeLbl = document.createElement("label");
+  modeLbl.textContent = "Mode";
+  const modeSel = document.createElement("select");
+  for (const opt of [
+    { value: "additive", label: "Additive (add boxes, select new)" },
+    { value: "replace", label: "Replace (clear everything)" },
+  ]) {
+    const o = document.createElement("option");
+    o.value = opt.value;
+    o.textContent = opt.label;
+    modeSel.appendChild(o);
+  }
+  modeSel.value = "additive";
+  modeRow.appendChild(modeLbl);
+  modeRow.appendChild(modeSel);
+  modal.appendChild(modeRow);
+
+  const actions = document.createElement("div");
+  actions.className = "byae-ideo-modal-actions";
+  const delBtn = document.createElement("button");
+  delBtn.className = "byae-ideo-btn";
+  delBtn.textContent = "Delete";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.className = "byae-ideo-btn";
+  cancelBtn.textContent = "Cancel";
+  const okBtn = document.createElement("button");
+  okBtn.className = "byae-ideo-btn active";
+  okBtn.textContent = "Load";
+  actions.appendChild(delBtn);
+  actions.appendChild(cancelBtn);
+  actions.appendChild(okBtn);
+  modal.appendChild(actions);
+  back.appendChild(modal);
+  document.body.appendChild(back);
+
+  const close = () => back.remove();
+  function refill() {
+    const list = names();
+    if (!list.length) {
+      close();
+      alert("No saved scenes.");
+      return;
+    }
+    const prev = nameSel.value;
+    nameSel.innerHTML = "";
+    for (const n of list) {
+      const o = document.createElement("option");
+      o.value = n;
+      o.textContent = n;
+      nameSel.appendChild(o);
+    }
+    if (list.includes(prev)) nameSel.value = prev;
+  }
+  refill();
+
+  cancelBtn.onclick = close;
+  back.addEventListener("mousedown", (e) => { if (e.target === back) close(); });
+  delBtn.onclick = async () => {
+    const name = nameSel.value;
+    if (!name) return;
+    if (!confirm(`Delete saved scene "${name}"? This cannot be undone.`)) return;
+    try {
+      await deleteStoreEntry("scenes", name);
+    } catch (e) {
+      alert("Failed to delete scene: " + e.message);
+      return;
+    }
+    delete stores.scenes[name];
+    refill();
+  };
+  okBtn.onclick = () => {
+    const name = nameSel.value;
+    if (!name || !stores.scenes[name]) return;
+    const mode = modeSel.value;
+    const state = stores.scenes[name];
+    close();
+    onLoad(state, mode === "replace");
+  };
+  nameSel.focus();
 }
 
 function showPasteJsonSourceModal(onOk) {
@@ -1802,19 +1959,9 @@ app.registerExtension({
           alert("Failed to load scene stores: " + e.message);
           return;
         }
-        const names = Object.keys(stores.scenes).sort();
-        if (!names.length) { alert("No saved scenes."); return; }
-        showModal("Load Scene", [
-          { key: "name", label: "Scene", type: "select", options: names.map((n) => ({ value: n, label: n })) },
-          { key: "mode", label: "Mode", type: "select", options: [
-            { value: "additive", label: "Additive (add boxes, select new)" },
-            { value: "replace", label: "Replace (clear everything)" },
-          ], default: "additive" },
-        ], (r) => {
-          const state = stores.scenes[r.name];
-          if (!state) return;
+        showSceneLoadModal(stores, (state, replace) => {
           closeInlineEditor();
-          applySceneState(state, r.mode === "replace");
+          applySceneState(state, replace);
           commit();
           fitNode();
         });
@@ -1914,6 +2061,17 @@ app.registerExtension({
         });
       }
 
+      function forgetStoreRef(type, name) {
+        let changed = false;
+        for (const b of node._boxes) {
+          if (b.storeRef && b.storeRef.type === type && b.storeRef.name === name) {
+            delete b.storeRef;
+            changed = true;
+          }
+        }
+        if (changed) commit();
+      }
+
       async function doLoadStore() {
         let stores;
         try {
@@ -1940,7 +2098,7 @@ app.registerExtension({
           singleSelect(node._boxes.length - 1);
           commit();
           fitNode();
-        });
+        }, forgetStoreRef);
       }
 
       function renderPanel() {
