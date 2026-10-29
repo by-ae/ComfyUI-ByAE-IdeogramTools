@@ -31,6 +31,7 @@
       "document": "readonly",
       "navigator": "readonly",
       "alert": "readonly",
+      "confirm": "readonly",
       "Image": "readonly",
       "requestAnimationFrame": "readonly",
       "setTimeout": "readonly",

@@ -9,8 +9,19 @@ from nodes.ideogram4_nodes import (
     sanitize_bg_guid, _norm_bbox, _palette, _hex_rgb, _dumps, _parse_json_list,
     _caption_to_boxes, _coerce_layout_int, _coerce_opacity,
     _elements_from_boxes, _preview_edges, _render_preview, ImageDraw,
-    save_bg_image_to_temp,
+    save_bg_image_to_temp, _uint8_frame_kind, _rgb_image_from_uint8, Image,
+    _parse_import_caption,
 )
+
+
+class _FakeFrame:
+    def __init__(self, shape):
+        self.shape = shape
+        self.reshaped = None
+
+    def reshape(self, *args):
+        self.reshaped = args
+        return ("flat", args)
 
 
 class TestPromptHelpers(unittest.TestCase):
@@ -401,6 +412,47 @@ class TestPromptHelpers(unittest.TestCase):
         self.assertIsNone(result)
         self.assertTrue(any("invalid background guid" in line.lower() for line in cm.output))
 
+    def test_uint8_frame_kind_matches_channel_count(self):
+        self.assertEqual(_uint8_frame_kind((8, 8, 3)), "rgb")
+        self.assertEqual(_uint8_frame_kind((8, 8, 4)), "rgba")
+        self.assertEqual(_uint8_frame_kind((8, 8, 1)), "gray1")
+        self.assertEqual(_uint8_frame_kind((8, 8)), "gray")
+        # Anything else keeps the RGB attempt, which reports a conversion failure.
+        self.assertEqual(_uint8_frame_kind((8, 8, 2)), "rgb")
+        self.assertEqual(_uint8_frame_kind((0, 8, 3)), "rgb")
+        self.assertEqual(_uint8_frame_kind(None), "rgb")
+        # bool is an int, and True == 1, so a boolean channel count must not
+        # take the single-channel path.
+        self.assertEqual(_uint8_frame_kind((8, 8, True)), "rgb")
+
+    def test_rgba_frame_is_composited_onto_black(self):
+        arr = _FakeFrame((2, 3, 4))
+        Image.fromarray.reset_mock()
+        Image.new.reset_mock()
+        Image.alpha_composite.reset_mock()
+        _rgb_image_from_uint8(arr)
+        Image.fromarray.assert_called_once_with(arr, mode="RGBA")
+        Image.new.assert_called_once()
+        args, _kwargs = Image.new.call_args
+        self.assertEqual(args[0], "RGBA")
+        self.assertEqual(args[2], (0, 0, 0, 255))
+        Image.alpha_composite.assert_called_once()
+        Image.alpha_composite.return_value.convert.assert_called_once_with("RGB")
+
+    def test_single_channel_frame_is_opened_as_grayscale(self):
+        gray = _FakeFrame((4, 5))
+        Image.fromarray.reset_mock()
+        _rgb_image_from_uint8(gray)
+        Image.fromarray.assert_called_once_with(gray, mode="L")
+        Image.fromarray.return_value.convert.assert_called_once_with("RGB")
+
+        column = _FakeFrame((4, 5, 1))
+        Image.fromarray.reset_mock()
+        _rgb_image_from_uint8(column)
+        self.assertEqual(column.reshaped, (4, 5))
+        Image.fromarray.assert_called_once_with(("flat", (4, 5)), mode="L")
+        Image.fromarray.return_value.convert.assert_called_once_with("RGB")
+
     def test_save_bg_image_warns_when_conversion_fails(self):
         guid = "12345678-1234-4abc-8abc-123456789012"
         image_mod = save_bg_image_to_temp.__globals__["Image"]
@@ -410,6 +462,47 @@ class TestPromptHelpers(unittest.TestCase):
         self.assertIsNone(result)
         self.assertTrue(any("could not convert" in line.lower() for line in cm.output))
         self.assertTrue(any("bad shape" in line for line in cm.output))
+
+
+class TestImportCaption(unittest.TestCase):
+    def test_blank_import_keeps_the_editor_quietly(self):
+        with self.assertNoLogs("byae.ideogram.prompt", level="WARNING"):
+            self.assertIsNone(_parse_import_caption(""))
+            self.assertIsNone(_parse_import_caption("   "))
+            self.assertIsNone(_parse_import_caption(None))
+
+    def test_invalid_json_and_non_objects_are_ignored(self):
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            self.assertIsNone(_parse_import_caption("{not json"))
+        self.assertTrue(any("not valid JSON" in line for line in cm.output))
+        self.assertTrue(any("editor caption" in line for line in cm.output))
+
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            self.assertIsNone(_parse_import_caption("[1, 2]"))
+        self.assertTrue(any("not a caption object" in line for line in cm.output))
+
+    def test_bom_object_is_a_caption(self):
+        raw = '\ufeff{"compositional_deconstruction": {"background": "sky", "elements": []}}'
+        with self.assertNoLogs("byae.ideogram.prompt", level="WARNING"):
+            cap = _parse_import_caption(raw)
+        self.assertEqual(cap["compositional_deconstruction"]["background"], "sky")
+
+    def test_incomplete_caption_object_is_kept_and_reported(self):
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            cap = _parse_import_caption("{}")
+        self.assertEqual(cap, {})
+        self.assertTrue(any("compositional_deconstruction" in line for line in cm.output))
+        self.assertTrue(any("still used" in line for line in cm.output))
+
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            _parse_import_caption('{"compositional_deconstruction": {}}')
+        self.assertTrue(any("background must be a string" in line for line in cm.output))
+
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            _parse_import_caption(
+                '{"compositional_deconstruction": {"background": "sky", "elements": {}}}'
+            )
+        self.assertTrue(any("elements must be a list" in line for line in cm.output))
 
 
 class TestPromptAssembly(unittest.TestCase):

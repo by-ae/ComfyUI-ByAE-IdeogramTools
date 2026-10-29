@@ -15,8 +15,8 @@ I may add other Ideogram 4 tools here in future, hence the name.
 
 ## Improvements over the KJ builder
 
-- **Character/Object store** — Save, Save As, and Load named characters/objects
-- **Save/Load entire scenes** — save and restore full scenes (boxes, overview, aesthetic, style colors, and the rest); add imported boxes (selected by default) or wipe and replace the entire scene
+- **Character/Object store** — Save, Save As, Load, and Delete named characters/objects
+- **Save/Load entire scenes** — save and restore full scenes (boxes, overview, aesthetic, style colors, and the rest); add imported boxes (selected by default) or wipe and replace the entire scene. Delete removes a saved scene
 - **Multi-select (Shift+click individual or Shift-drag to select and move/scale them all)** — Shift+drag a selection rectangle; any partially overlapping box is included, the entire selection can be moved around or scaled uniformly on the sides or corners. Shift+click a box to add or remove it from the selection
 - **Live background image** — Preview BG Update pushes a workflow image onto the builder canvas; opacity slider blends it over black
 - **Copy and paste** — Ctrl+C / Ctrl+V for selected boxes (geometry and field data)
@@ -73,10 +73,17 @@ Load shows the request error (for example `HTTP 500`) when the store cannot be r
 - Ensure the ComfyUI user directory is writable
 - Try a shorter name (max 64 characters)
 
+### Connected import JSON did not change the prompt
+
+The `import_json` input overrides the editor only when it is a JSON object. A leading UTF-8 byte-order mark is ignored. If the value is empty, not valid JSON, or a JSON array, the node keeps the editor caption and prints a line starting with `[ByAE Ideogram]`.
+
+An object without `compositional_deconstruction` is still used as the prompt. Ideogram 4 requires that object, with a string `background` and a list `elements`. The console says when one of those is missing.
+
 ### Background image not updating
 
 - Verify the `guid` output from the builder is connected to Preview BG Update's `guid` input
 - Check the ComfyUI console for a line starting with `[ByAE Ideogram BG]`. A failed save names the reason: no image, an empty or invalid guid, an image that could not be converted, or a disk write error
+- RGBA frames are composited onto black, and single-channel frames are expanded to RGB, before the file is written. The conversion warning is for a tensor that still cannot be turned into an image
 - The temp directory must be writable (usually `ComfyUI/temp`)
 
 ### Saved workflows break after updating
