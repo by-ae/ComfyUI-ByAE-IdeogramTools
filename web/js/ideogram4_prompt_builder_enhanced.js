@@ -9,6 +9,7 @@ import {
 import {
   captionText, cleanPalette, dimsFromAspect, elementToRegion, offsetAddedRegions, pasteRegions,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
+  topRegionIndex,
   transformBoxesContentUniform,
 } from "./caption_layout.js";
 
@@ -980,6 +981,15 @@ app.registerExtension({
         return res;
       }
 
+      // Shift-click and double-click follow paint order. boxesAt pulls the
+      // active region to the front so its handles win a drag, which made it
+      // impossible to toggle or edit the region drawn on top of it.
+      function topIndexAt(mN) {
+        const { canvasEl: c } = getLiveCanvas();
+        if (!(c.width > 0) || !(c.height > 0)) return -1;
+        return topRegionIndex(node._boxes, mN.x, mN.y, HANDLE / c.width, HANDLE / c.height);
+      }
+
       function groupHitTest(mN) {
         if (node._selected.size <= 1) return null;
         const g = groupBbox(node._selected);
@@ -1432,9 +1442,8 @@ app.registerExtension({
       canvasEl.addEventListener("dblclick", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const cands = boxesAt(mouseN(e));
-        const target = cands.find((c) => c.index === node._activeIdx) || cands[0];
-        if (target) openInlineEditor(target.index);
+        const top = topIndexAt(mouseN(e));
+        if (top >= 0) openInlineEditor(top);
       });
 
       canvasEl.addEventListener("keydown", (e) => {
@@ -1511,8 +1520,8 @@ app.registerExtension({
           const dy = Math.abs(mN.y - node._marqueeStartN.y);
           if (dx < 0.008 && dy < 0.008) {
             node._selected = new Set(node._marqueeBaseSel || []);
-            const cands = boxesAt(mN);
-            if (cands.length) shiftClickBox(cands[0].index);
+            const top = topIndexAt(mN);
+            if (top >= 0) shiftClickBox(top);
             else if (!node._selected.size) node._activeIdx = -1;
           } else {
             node._marqueeEndN = mN;

@@ -13,6 +13,7 @@ import {
   rectToIdeogramBbox,
   regionCoordsFinite,
   remapImportedRegions,
+  topRegionIndex,
   staggerLoadedRegion,
   transformBoxesContentUniform,
 } from "../web/js/caption_layout.js";
@@ -98,6 +99,25 @@ describe("ideogram bbox import", () => {
     assert.equal(rectToIdeogramBbox({ x: true, y: 0, w: 0.2, h: 0.2 }), null);
     assert.deepEqual(rectToIdeogramBbox({}), [0, 0, 0, 0]);
     assert.deepEqual(rectToIdeogramBbox({ x: 1e308, y: 0, w: 1e308, h: 0.2 }), [0, 1000, 200, 1000]);
+  });
+});
+
+describe("overlapping regions", () => {
+  const boxes = [
+    { x: 0, y: 0, w: 0.8, h: 0.8, desc: "under" },
+    { x: 0.2, y: 0.2, w: 0.2, h: 0.2, desc: "over" },
+    { x: Number.NaN, y: 0.2, w: 0.2, h: 0.2, desc: "bad" },
+  ];
+
+  it("picks the later region, which is the one drawn on top", () => {
+    assert.equal(topRegionIndex(boxes, 0.3, 0.3), 1);
+    assert.equal(topRegionIndex(boxes, 0.05, 0.05), 0);
+    assert.equal(topRegionIndex(boxes, 0.95, 0.95), -1);
+  });
+
+  it("still hits a handle that sits just outside the region", () => {
+    assert.equal(topRegionIndex(boxes, 0.8, 0.4, 0.02, 0.02), 0);
+    assert.equal(topRegionIndex([{ x: 0.5, y: 0.5, w: 0.1, h: 0.1 }], 0.62, 0.55, 0.03, 0.03), 0);
   });
 });
 

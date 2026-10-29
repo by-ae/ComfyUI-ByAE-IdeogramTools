@@ -96,6 +96,31 @@ export function regionCoordsFinite(b) {
   return !!b && [b.x, b.y, b.w, b.h].every((n) => typeof n === "number" && Number.isFinite(n));
 }
 
+function hitsRegion(mx, my, b, rx, ry) {
+  const x1 = b.x;
+  const y1 = b.y;
+  const x2 = b.x + b.w;
+  const y2 = b.y + b.h;
+  const near = (cx, cy) => Math.abs(mx - cx) < rx && Math.abs(my - cy) < ry;
+  if (near(x1, y1) || near(x2, y1) || near(x1, y2) || near(x2, y2)) return true;
+  if (mx >= x1 && mx <= x2 && Math.abs(my - y1) < ry) return true;
+  if (mx >= x1 && mx <= x2 && Math.abs(my - y2) < ry) return true;
+  if (my >= y1 && my <= y2 && Math.abs(mx - x1) < rx) return true;
+  if (my >= y1 && my <= y2 && Math.abs(mx - x2) < rx) return true;
+  return mx >= x1 && mx <= x2 && my >= y1 && my <= y2;
+}
+
+/** Index of the topmost region under a normalized point, or -1. Later boxes are drawn above earlier ones. */
+export function topRegionIndex(boxes, x, y, rx = 0, ry = 0) {
+  const list = boxes || [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const b = list[i];
+    if (!regionCoordsFinite(b)) continue;
+    if (hitsRegion(x, y, b, rx, ry)) return i;
+  }
+  return -1;
+}
+
 const HEX6 = /^#[0-9A-F]{6}$/;
 const HEX3 = /^#[0-9A-F]{3}$/;
 
