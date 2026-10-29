@@ -484,6 +484,68 @@ def _elements_from_boxes(boxes):
     return elements
 
 
+_PROMPT_LOG = logging.getLogger("byae.ideogram.prompt")
+
+
+def _prompt_warn(msg, *args):
+    """Print caption problems. Success stays quiet; a bad import must not."""
+    line = "[ByAE Ideogram] " + (msg % args if args else msg)
+    _PROMPT_LOG.warning("%s", line)
+    print(line, flush=True)
+
+
+def _parse_import_caption(import_json):
+    """Return a caption object from import_json, or None to keep the editor.
+
+    A blank value leaves the editor alone and stays quiet. Invalid JSON and
+    values that are not objects are ignored. An object is still the prompt,
+    including one that Ideogram 4 will reject for a missing
+    compositional_deconstruction, background string, or elements list.
+    https://github.com/ideogram-oss/ideogram4/blob/main/docs/prompting.md
+    """
+    if not isinstance(import_json, str):
+        return None
+    text = import_json.strip()
+    if text.startswith("\ufeff"):
+        text = text[1:].strip()
+    if not text:
+        return None
+    try:
+        cap = json.loads(text)
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        _prompt_warn(
+            "import JSON was ignored because it is not valid JSON (%s). "
+            "The editor caption was used instead.",
+            exc,
+        )
+        return None
+    if not isinstance(cap, dict):
+        _prompt_warn(
+            "import JSON was ignored because it is a %s, not a caption object. "
+            "The editor caption was used instead.",
+            type(cap).__name__,
+        )
+        return None
+    cd = cap.get("compositional_deconstruction")
+    if not isinstance(cd, dict):
+        _prompt_warn(
+            "import JSON has no compositional_deconstruction object, which "
+            "Ideogram 4 requires on every caption. The connected JSON was "
+            "still used as the prompt."
+        )
+    elif not isinstance(cd.get("background"), str):
+        _prompt_warn(
+            "import JSON compositional_deconstruction.background must be a "
+            "string. The connected JSON was still used as the prompt."
+        )
+    elif not isinstance(cd.get("elements"), list):
+        _prompt_warn(
+            "import JSON compositional_deconstruction.elements must be a "
+            "list. The connected JSON was still used as the prompt."
+        )
+    return cap
+
+
 def _parse_json_list(s):
     if s:
         try:
@@ -657,14 +719,10 @@ folder and picked up automatically by the editor.""",
         background_opacity = _coerce_opacity(background_opacity)
         guid = (bg_guid or "").strip()
 
-        if import_json and import_json.strip():
-            try:
-                cap = json.loads(import_json)
-                if isinstance(cap, dict):
-                    preview = _render_preview(_caption_to_boxes(cap), width, height, guid, background_opacity)
-                    return io.NodeOutput(_dumps(cap), preview, width, height, guid)
-            except (json.JSONDecodeError, TypeError, ValueError):
-                pass
+        cap = _parse_import_caption(import_json)
+        if cap is not None:
+            preview = _render_preview(_caption_to_boxes(cap), width, height, guid, background_opacity)
+            return io.NodeOutput(_dumps(cap), preview, width, height, guid)
 
         boxes = _parse_json_list(elements_data)
 

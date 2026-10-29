@@ -73,6 +73,12 @@ Load shows the request error (for example `HTTP 500`) when the store cannot be r
 - Ensure the ComfyUI user directory is writable
 - Try a shorter name (max 64 characters)
 
+### Connected import JSON did not change the prompt
+
+The `import_json` input overrides the editor only when it is a JSON object. A leading UTF-8 byte-order mark is ignored. If the value is empty, not valid JSON, or a JSON array, the node keeps the editor caption and prints a line starting with `[ByAE Ideogram]`.
+
+An object without `compositional_deconstruction` is still used as the prompt. Ideogram 4 requires that object, with a string `background` and a list `elements`. The console says when one of those is missing.
+
 ### Background image not updating
 
 - Verify the `guid` output from the builder is connected to Preview BG Update's `guid` input
