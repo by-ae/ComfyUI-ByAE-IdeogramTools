@@ -124,6 +124,22 @@ function hitsRegion(mx, my, b, rx, ry) {
   return mx >= x1 && mx <= x2 && my >= y1 && my <= y2;
 }
 
+/**
+ * After every selected region is deleted, nothing stays active.
+ * Leaving the nearest survivor active made the next Delete remove it too.
+ */
+export function indexesAfterClearingSelection(count, selected) {
+  const total = Number.isInteger(count) && count > 0 ? count : 0;
+  const seen = new Set();
+  let removed = 0;
+  for (const i of selected || []) {
+    if (!Number.isInteger(i) || i < 0 || i >= total || seen.has(i)) continue;
+    seen.add(i);
+    removed += 1;
+  }
+  return { count: total - removed, selected: [], active: -1 };
+}
+
 /** Index of the topmost region under a normalized point, or -1. Later boxes are drawn above earlier ones. */
 export function topRegionIndex(boxes, x, y, rx = 0, ry = 0) {
   const list = boxes || [];

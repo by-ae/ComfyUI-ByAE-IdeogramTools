@@ -7,7 +7,8 @@ import {
   loadStores, saveStoreEntry, deleteStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
 import {
-  captionText, cleanPalette, dimsFromAspect, elementToRegion, offsetAddedRegions, pasteRegions,
+  captionText, cleanPalette, dimsFromAspect, elementToRegion, indexesAfterClearingSelection,
+  offsetAddedRegions, pasteRegions,
   regionLabel,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
   swatchHex, topRegionIndex,
@@ -1457,9 +1458,11 @@ app.registerExtension({
       }
 
       function removeSelected() {
+        const ending = indexesAfterClearingSelection(node._boxes.length, node._selected);
         const toRemove = [...node._selected].sort((a, b) => b - a);
         for (const i of toRemove) removeBox(i);
         node._selected = new Set();
+        node._activeIdx = ending.active;
       }
 
       canvasEl.addEventListener("mousedown", (e) => {

@@ -8,6 +8,7 @@ import {
   dimsFromAspect,
   fallbackRegion,
   ideogramBboxToRect,
+  indexesAfterClearingSelection,
   offsetAddedRegions,
   pasteRegions,
   rectToIdeogramBbox,
@@ -106,6 +107,23 @@ describe("ideogram bbox import", () => {
     assert.equal(rectToIdeogramBbox({ x: true, y: 0, w: 0.2, h: 0.2 }), null);
     assert.deepEqual(rectToIdeogramBbox({}), [0, 0, 0, 0]);
     assert.deepEqual(rectToIdeogramBbox({ x: 1e308, y: 0, w: 1e308, h: 0.2 }), [0, 1000, 200, 1000]);
+  });
+});
+
+describe("deleting a selection", () => {
+  it("removes only the selected regions and leaves nothing active", () => {
+    const ending = indexesAfterClearingSelection(3, [0, 2]);
+    assert.deepEqual(ending, { count: 1, selected: [], active: -1 });
+  });
+
+  it("counts each selected index once and ignores indexes outside the list", () => {
+    const ending = indexesAfterClearingSelection(2, [0, 0, 5, -1]);
+    assert.deepEqual(ending, { count: 1, selected: [], active: -1 });
+  });
+
+  it("drops every region when the whole canvas is selected", () => {
+    const ending = indexesAfterClearingSelection(4, [0, 1, 2, 3]);
+    assert.deepEqual(ending, { count: 0, selected: [], active: -1 });
   });
 });
 
