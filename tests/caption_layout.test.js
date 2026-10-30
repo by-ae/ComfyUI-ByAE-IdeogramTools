@@ -12,6 +12,7 @@ import {
   pasteRegions,
   rectToIdeogramBbox,
   regionCoordsFinite,
+  regionLabel,
   remapImportedRegions,
   topRegionIndex,
   staggerLoadedRegion,
@@ -45,6 +46,11 @@ describe("ideogram bbox import", () => {
     assert.equal(captionText(true), "");
     assert.equal(captionText(Number.NaN), "");
     assert.equal(captionText(" keep "), " keep ");
+    assert.equal(regionLabel({ type: "text", text: 12, desc: 5 }), '"12" — 5');
+    assert.equal(regionLabel({ type: "obj", desc: true }), "");
+    assert.equal(regionLabel({ type: "obj", desc: { a: 1 } }), "");
+    assert.equal(typeof regionLabel({ type: "text", text: 0, desc: false }), "string");
+    assert.equal(regionLabel(null), "");
   });
 
   it("swaps inverted axes so the region can be hit-tested", () => {

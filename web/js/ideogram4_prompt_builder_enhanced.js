@@ -8,6 +8,7 @@ import {
 } from "./ideogram4_shared.js";
 import {
   captionText, cleanPalette, dimsFromAspect, elementToRegion, offsetAddedRegions, pasteRegions,
+  regionLabel,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
   swatchHex, topRegionIndex,
   transformBoxesContentUniform,
@@ -103,7 +104,7 @@ function normalizeBoxCoords(b) {
 function cloneBox(b) {
   const c = {
     x: b.x, y: b.y, w: b.w, h: b.h,
-    type: b.type || "obj", text: b.text || "", desc: b.desc || "",
+    type: b.type || "obj", text: captionText(b.text), desc: captionText(b.desc),
     palette: cleanPalette(b.palette, MAX_ELEM_COLORS),
   };
   if (b.nobbox) c.nobbox = true;
@@ -113,7 +114,7 @@ function cloneBox(b) {
 
 function boxPayload(b) {
   return {
-    type: b.type || "obj", text: b.text || "", desc: b.desc || "",
+    type: b.type || "obj", text: captionText(b.text), desc: captionText(b.desc),
     palette: cleanPalette(b.palette, MAX_ELEM_COLORS),
   };
 }
@@ -959,6 +960,8 @@ app.registerExtension({
                 .filter(regionCoordsFinite)
                 .map((b) => normalizeBoxCoords({
                   ...b,
+                  text: captionText(b.text),
+                  desc: captionText(b.desc),
                   palette: cleanPalette(b.palette, MAX_ELEM_COLORS),
                 }));
               node._activeIdx = node._boxes.length ? 0 : -1;
@@ -1364,8 +1367,7 @@ app.registerExtension({
           ctx.beginPath();
           ctx.rect(x1, y1, w, h);
           ctx.clip();
-          let body = b.desc || "";
-          if (b.type === "text" && b.text) body = `"${b.text}"` + (body ? " — " + body : "");
+          const body = regionLabel(b);
           if (body) {
             ctx.font = "11px sans-serif";
             ctx.fillStyle = "#fff";
@@ -2100,8 +2102,8 @@ app.registerExtension({
           const nb = {
             x: placed.x, y: placed.y, w: placed.w, h: placed.h,
             type: data.type || "obj",
-            text: data.text || "",
-            desc: data.desc || "",
+            text: captionText(data.text),
+            desc: captionText(data.desc),
             palette: cleanPalette(data.palette, MAX_ELEM_COLORS),
             storeRef: { type, name },
           };

@@ -78,6 +78,17 @@ export function captionText(value) {
   return "";
 }
 
+/** One line for the canvas. Always a string, so drawing can wrap it. */
+export function regionLabel(box) {
+  if (!box || typeof box !== "object") return "";
+  const desc = captionText(box.desc);
+  if (box.type === "text") {
+    const text = captionText(box.text);
+    if (text) return desc ? `"${text}" — ${desc}` : `"${text}"`;
+  }
+  return desc;
+}
+
 export function elementToRegion(el, idx) {
   if (!el || typeof el !== "object") return null;
   const box = {
