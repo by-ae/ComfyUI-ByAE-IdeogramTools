@@ -9,7 +9,7 @@ import {
 import {
   captionText, cleanPalette, dimsFromAspect, elementToRegion, offsetAddedRegions, pasteRegions,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
-  topRegionIndex,
+  swatchHex, topRegionIndex,
   transformBoxesContentUniform,
 } from "./caption_layout.js";
 
@@ -104,7 +104,7 @@ function cloneBox(b) {
   const c = {
     x: b.x, y: b.y, w: b.w, h: b.h,
     type: b.type || "obj", text: b.text || "", desc: b.desc || "",
-    palette: Array.isArray(b.palette) ? b.palette.slice() : [],
+    palette: cleanPalette(b.palette, MAX_ELEM_COLORS),
   };
   if (b.nobbox) c.nobbox = true;
   if (b.storeRef) c.storeRef = { ...b.storeRef };
@@ -114,7 +114,7 @@ function cloneBox(b) {
 function boxPayload(b) {
   return {
     type: b.type || "obj", text: b.text || "", desc: b.desc || "",
-    palette: Array.isArray(b.palette) ? b.palette.slice() : [],
+    palette: cleanPalette(b.palette, MAX_ELEM_COLORS),
   };
 }
 
@@ -957,7 +957,10 @@ app.registerExtension({
             if (Array.isArray(parsed)) {
               node._boxes = parsed
                 .filter(regionCoordsFinite)
-                .map((b) => normalizeBoxCoords(b));
+                .map((b) => normalizeBoxCoords({
+                  ...b,
+                  palette: cleanPalette(b.palette, MAX_ELEM_COLORS),
+                }));
               node._activeIdx = node._boxes.length ? 0 : -1;
               node._selected = node._boxes.length ? new Set([0]) : new Set();
             }
@@ -968,7 +971,7 @@ app.registerExtension({
         if (p.byae_style_palette_data) {
           try {
             const sp = JSON.parse(p.byae_style_palette_data);
-            if (Array.isArray(sp)) node._stylePalette = sp.filter((c) => typeof c === "string");
+            if (Array.isArray(sp)) node._stylePalette = cleanPalette(sp, MAX_STYLE_COLORS);
           } catch (e) {
             console.error("ByAE Ideogram: failed to parse style_palette_data:", e);
           }
@@ -1854,7 +1857,7 @@ app.registerExtension({
         setWidgetVal("aesthetics", sd.aesthetics || "");
         setWidgetVal("lighting", sd.lighting || "");
         setWidgetVal("medium", sd.medium || "");
-        node._stylePalette = Array.isArray(sd.color_palette) ? sd.color_palette.slice() : [];
+        node._stylePalette = cleanPalette(sd.color_palette, MAX_STYLE_COLORS);
       }
 
       function tryParseCaption(t) {
@@ -1928,7 +1931,7 @@ app.registerExtension({
           setWidgetVal("style", kind);
           if (kind === "photo") setWidgetVal("style.photo", state.widgets?.photo || "");
           else if (kind === "art_style") setWidgetVal("style.art_style", state.widgets?.art_style || "");
-          node._stylePalette = Array.isArray(state.stylePalette) ? state.stylePalette.slice() : [];
+          node._stylePalette = cleanPalette(state.stylePalette, MAX_STYLE_COLORS);
           rebuildStylePalette();
         }
         setSelection(newIdxs.length ? newIdxs : (node._boxes.length ? [0] : []));
@@ -1972,14 +1975,22 @@ app.registerExtension({
       }
 
       function buildSwatchRow(container, arr, max, onEdit, onStruct) {
+        // input[type=color] accepts only #rrggbb. Other strings are replaced
+        // with #000000, so a pasted #fff used to open the picker on black.
+        const cleaned = cleanPalette(arr, max);
+        if (cleaned.length !== arr.length || cleaned.some((c, i) => c !== arr[i])) {
+          arr.splice(0, arr.length, ...cleaned);
+        }
         arr.forEach((hex, i) => {
+          const shown = swatchHex(hex);
+          if (!shown) return;
           const sw = document.createElement("div");
           sw.className = "byae-ideo-sw";
-          sw.style.background = hex;
+          sw.style.background = shown;
           sw.title = "Click to edit · right-click to remove";
           const inp = document.createElement("input");
           inp.type = "color";
-          inp.value = hex;
+          inp.value = shown;
           stopProp(sw);
           sw.addEventListener("click", () => inp.click());
           sw.addEventListener("contextmenu", (e) => {
@@ -2091,7 +2102,7 @@ app.registerExtension({
             type: data.type || "obj",
             text: data.text || "",
             desc: data.desc || "",
-            palette: Array.isArray(data.palette) ? data.palette.slice() : [],
+            palette: cleanPalette(data.palette, MAX_ELEM_COLORS),
             storeRef: { type, name },
           };
           node._boxes.push(nb);

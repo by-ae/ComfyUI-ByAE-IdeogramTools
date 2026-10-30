@@ -15,6 +15,7 @@ import {
   remapImportedRegions,
   topRegionIndex,
   staggerLoadedRegion,
+  swatchHex,
   transformBoxesContentUniform,
 } from "../web/js/caption_layout.js";
 
@@ -127,6 +128,20 @@ describe("color palettes", () => {
       cleanPalette([null, "", "red", "#fff", "#aabbcc", 1, true, "#12"]),
       ["#FFFFFF", "#AABBCC"],
     );
+  });
+
+  it("turns a pasted element palette into colors the picker can edit", () => {
+    const box = elementToRegion({
+      type: "obj",
+      desc: "shirt",
+      bbox: [0, 0, 100, 100],
+      color_palette: ["#fff", "red", "#aabbcc", "#123456", "#ABCDEF", "#010203", "extra"],
+    }, 0);
+    assert.deepEqual(box.palette, ["#FFFFFF", "#AABBCC", "#123456", "#ABCDEF", "#010203"]);
+    assert.equal(swatchHex("#fff"), "#ffffff");
+    assert.equal(swatchHex("#AABBCC"), "#aabbcc");
+    assert.equal(swatchHex("red"), null);
+    assert.equal(swatchHex("#GG0000"), null);
   });
 
   it("stops at the caller limit", () => {

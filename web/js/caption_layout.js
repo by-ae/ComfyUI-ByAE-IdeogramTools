@@ -84,7 +84,10 @@ export function elementToRegion(el, idx) {
     type: el.type === "text" ? "text" : "obj",
     text: captionText(el.text),
     desc: captionText(el.desc),
-    palette: Array.isArray(el.color_palette) ? el.color_palette.slice() : [],
+    // Ideogram 4 allows at most five uppercase #RRGGBB colors on an element.
+    // Shorthand and other values are dropped here so the editor stores the
+    // same colors the prompt will keep.
+    palette: cleanPalette(Array.isArray(el.color_palette) ? el.color_palette : [], 5),
   };
   const rect = ideogramBboxToRect(el.bbox);
   if (rect) Object.assign(box, rect);
@@ -142,6 +145,12 @@ export function cleanPalette(colors, limit) {
     if (limit != null && out.length >= limit) break;
   }
   return out;
+}
+
+/** Lowercase #rrggbb for input[type=color]. Anything else is unusable there. */
+export function swatchHex(color) {
+  const hex = normalizeHex(color);
+  return hex ? hex.toLowerCase() : null;
 }
 
 function clamp01(v) {
