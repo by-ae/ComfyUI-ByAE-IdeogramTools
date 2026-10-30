@@ -494,6 +494,89 @@ def _prompt_warn(msg, *args):
     print(line, flush=True)
 
 
+def _caption_field(value):
+    """String for a caption field. A real string is kept, including blanks."""
+    if isinstance(value, str):
+        return value
+    return _as_text(value)
+
+
+_STYLE_KINDS = ("none", "photo", "art_style")
+
+
+def _resolve_style(style):
+    """Return kind, photo text, and art_style text.
+
+    ComfyUI passes a dict. A bare kind string still selects that style, with
+    the nested description left blank. Anything else omits the style block
+    instead of failing the node.
+    """
+    if isinstance(style, dict):
+        raw = style.get("style", "none")
+        if isinstance(raw, str) and raw in _STYLE_KINDS:
+            return (
+                raw,
+                _caption_field(style.get("photo", "")),
+                _caption_field(style.get("art_style", "")),
+            )
+        shown = repr(raw) if isinstance(raw, str) and len(raw) <= 64 else type(raw).__name__
+        _prompt_warn(
+            "style choice %s was ignored. Expected none, photo, or art_style. "
+            "The style block was omitted.",
+            shown,
+        )
+        return "none", "", ""
+    if isinstance(style, str) and style in _STYLE_KINDS:
+        if style != "none":
+            _prompt_warn(
+                "style was the string %s, so its description was left blank. "
+                "Pass a style object to include the photo or art_style text.",
+                style,
+            )
+        return style, "", ""
+    _prompt_warn(
+        "style was ignored because it was %s, not a style choice. "
+        "The style block was omitted.",
+        type(style).__name__,
+    )
+    return "none", "", ""
+
+
+def _editor_caption(background, style, high_level_description="", aesthetics="", lighting="",
+                    medium="", style_palette_data="", elements_data=""):
+    """Caption dict for the editor fields. Unusable values are coerced, not raised."""
+    background = _caption_field(background)
+    high_level_description = _caption_field(high_level_description)
+    aesthetics = _caption_field(aesthetics)
+    lighting = _caption_field(lighting)
+    medium = _caption_field(medium)
+    boxes = _parse_json_list(elements_data)
+
+    caption = {}
+    if high_level_description.strip():
+        caption["high_level_description"] = high_level_description
+
+    kind, photo, art_style = _resolve_style(style)
+    if kind != "none":
+        sd = {"aesthetics": aesthetics, "lighting": lighting}
+        if kind == "photo":
+            sd["photo"] = photo
+            sd["medium"] = medium
+        else:
+            sd["medium"] = medium
+            sd["art_style"] = art_style
+        palette = _palette(_parse_json_list(style_palette_data), STYLE_PALETTE_MAX)
+        if palette:
+            sd["color_palette"] = palette
+        caption["style_description"] = sd
+
+    caption["compositional_deconstruction"] = {
+        "background": background,
+        "elements": _elements_from_boxes(boxes),
+    }
+    return caption
+
+
 def _parse_import_caption(import_json):
     """Return a caption object from import_json, or None to keep the editor.
 
@@ -727,40 +810,20 @@ folder and picked up automatically by the editor.""",
         width = _coerce_layout_int(width)
         height = _coerce_layout_int(height)
         background_opacity = _coerce_opacity(background_opacity)
-        guid = (bg_guid or "").strip()
+        guid = bg_guid.strip() if isinstance(bg_guid, str) else ""
 
         cap = _parse_import_caption(import_json)
         if cap is not None:
             preview = _render_preview(_caption_to_boxes(cap), width, height, guid, background_opacity)
             return io.NodeOutput(_dumps(cap), preview, width, height, guid)
 
-        boxes = _parse_json_list(elements_data)
-
-        caption = {}
-        if high_level_description.strip():
-            caption["high_level_description"] = high_level_description
-
-        kind = style["style"]
-        if kind != "none":
-            sd = {"aesthetics": aesthetics, "lighting": lighting}
-            if kind == "photo":
-                sd["photo"] = style.get("photo", "")
-                sd["medium"] = medium
-            else:
-                sd["medium"] = medium
-                sd["art_style"] = style.get("art_style", "")
-            palette = _palette(_parse_json_list(style_palette_data), STYLE_PALETTE_MAX)
-            if palette:
-                sd["color_palette"] = palette
-            caption["style_description"] = sd
-
-        elements = _elements_from_boxes(boxes)
-
-        caption["compositional_deconstruction"] = {
-            "background": background,
-            "elements": elements,
-        }
-        preview = _render_preview(boxes, width, height, guid, background_opacity)
+        caption = _editor_caption(
+            background, style, high_level_description, aesthetics, lighting, medium,
+            style_palette_data, elements_data,
+        )
+        preview = _render_preview(
+            _parse_json_list(elements_data), width, height, guid, background_opacity,
+        )
         return io.NodeOutput(_dumps(caption), preview, width, height, guid)
 
 

@@ -10,7 +10,7 @@ from nodes.ideogram4_nodes import (
     _caption_to_boxes, _coerce_layout_int, _coerce_opacity,
     _elements_from_boxes, _preview_edges, _render_preview, ImageDraw,
     save_bg_image_to_temp, _uint8_frame_kind, _rgb_image_from_uint8, Image,
-    _parse_import_caption,
+    _parse_import_caption, _caption_field, _resolve_style, _editor_caption,
 )
 
 
@@ -503,6 +503,73 @@ class TestImportCaption(unittest.TestCase):
                 '{"compositional_deconstruction": {"background": "sky", "elements": {}}}'
             )
         self.assertTrue(any("elements must be a list" in line for line in cm.output))
+
+
+class TestStyleChoice(unittest.TestCase):
+    def test_photo_dict_keeps_its_text(self):
+        with self.assertNoLogs("byae.ideogram.prompt", level="WARNING"):
+            kind, photo, art = _resolve_style({
+                "style": "photo",
+                "photo": "35mm",
+                "art_style": "ignored when photo is selected",
+            })
+        self.assertEqual(kind, "photo")
+        self.assertEqual(photo, "35mm")
+        self.assertEqual(art, "ignored when photo is selected")
+
+    def test_missing_choice_is_none(self):
+        with self.assertNoLogs("byae.ideogram.prompt", level="WARNING"):
+            self.assertEqual(_resolve_style({})[0], "none")
+            self.assertEqual(_resolve_style({"style": "none"})[0], "none")
+            self.assertEqual(_resolve_style("none"), ("none", "", ""))
+
+    def test_bare_style_string_does_not_fail(self):
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            kind, photo, art = _resolve_style("art_style")
+        self.assertEqual((kind, photo, art), ("art_style", "", ""))
+        self.assertTrue(any("string" in line and "art_style" in line for line in cm.output))
+
+    def test_unusable_style_omits_the_block(self):
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            self.assertEqual(_resolve_style(None), ("none", "", ""))
+        self.assertTrue(any("ignored" in line for line in cm.output))
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            self.assertEqual(_resolve_style({"style": "watercolor"})[0], "none")
+        self.assertTrue(any("watercolor" in line for line in cm.output))
+
+    def test_caption_field_keeps_strings(self):
+        self.assertEqual(_caption_field("  hi "), "  hi ")
+        self.assertEqual(_caption_field(""), "")
+        self.assertEqual(_caption_field(None), "")
+        self.assertEqual(_caption_field(12), "12")
+        self.assertEqual(_caption_field(True), "")
+
+    def test_editor_caption_survives_unusable_fields(self):
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING"):
+            caption = _editor_caption(None, None, high_level_description=None)
+        self.assertEqual(caption["compositional_deconstruction"]["background"], "")
+        self.assertEqual(caption["compositional_deconstruction"]["elements"], [])
+        self.assertNotIn("style_description", caption)
+        self.assertNotIn("high_level_description", caption)
+
+        with self.assertNoLogs("byae.ideogram.prompt", level="WARNING"):
+            caption = _editor_caption(
+                "room",
+                {"style": "photo", "photo": "35mm"},
+                high_level_description="  overview  ",
+                aesthetics="moody",
+                lighting="dim",
+                medium="photograph",
+                style_palette_data='["#fff"]',
+            )
+        self.assertEqual(caption["high_level_description"], "  overview  ")
+        style = caption["style_description"]
+        self.assertEqual(
+            list(style.keys()),
+            ["aesthetics", "lighting", "photo", "medium", "color_palette"],
+        )
+        self.assertEqual(style["photo"], "35mm")
+        self.assertEqual(style["color_palette"], ["#FFFFFF"])
 
 
 class TestPromptAssembly(unittest.TestCase):
