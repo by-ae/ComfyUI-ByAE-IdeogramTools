@@ -7,7 +7,8 @@ import {
   loadStores, saveStoreEntry, deleteStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
 import {
-  captionText, cleanPalette, dimsFromAspect, elementToRegion, indexesAfterClearingSelection,
+  captionText, cleanPalette, dimsFromAspect, elementToRegion, ideogramResolutionWarning,
+  indexesAfterClearingSelection,
   offsetAddedRegions, pasteRegions,
   regionLabel,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
@@ -661,7 +662,7 @@ app.registerExtension({
       wInp.type = "number";
       wInp.min = "64";
       wInp.max = "16384";
-      wInp.step = "8";
+      wInp.step = "16";
       wInp.title = "Canvas width";
       wInp.value = String(LAYOUT_DIM_DEFAULT);
       const hInp = document.createElement("input");
@@ -669,7 +670,7 @@ app.registerExtension({
       hInp.type = "number";
       hInp.min = "64";
       hInp.max = "16384";
-      hInp.step = "8";
+      hInp.step = "16";
       hInp.title = "Canvas height";
       hInp.value = String(LAYOUT_DIM_DEFAULT);
       const scaleSel = document.createElement("select");
@@ -690,6 +691,8 @@ app.registerExtension({
       updateSizeBtn.title = "Apply width/height to the preview and scale regions";
       const sizePendingSpan = document.createElement("span");
       sizePendingSpan.style.cssText = "color:#888; font-size:11px; white-space:nowrap;";
+      const sizeWarnSpan = document.createElement("span");
+      sizeWarnSpan.style.cssText = "color:#c90; font-size:11px; white-space:nowrap;";
       const opacityLbl = document.createElement("span");
       opacityLbl.textContent = "Bg:";
       opacityLbl.title = "Background opacity over black";
@@ -797,6 +800,7 @@ app.registerExtension({
       sizeBar.appendChild(opacityVal);
       sizeBar.appendChild(sizeBarSpacer);
       sizeBar.appendChild(sizePendingSpan);
+      sizeBar.appendChild(sizeWarnSpan);
       wrap.appendChild(sizeBar);
       wrap.appendChild(bar);
       wrap.appendChild(sceneBar);
@@ -1019,6 +1023,11 @@ app.registerExtension({
           sizePendingSpan.textContent = `preview ${lw}×${lh}`;
           updateSizeBtn.classList.remove("active");
         }
+        const sizeNote = ideogramResolutionWarning(w, h);
+        sizeWarnSpan.textContent = sizeNote;
+        sizeWarnSpan.style.display = sizeNote ? "" : "none";
+        wInp.title = sizeNote ? `Canvas width. ${sizeNote}` : "Canvas width";
+        hInp.title = sizeNote ? `Canvas height. ${sizeNote}` : "Canvas height";
       }
 
       function applyUpdateSize() {

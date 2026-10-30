@@ -89,9 +89,15 @@ An object without `compositional_deconstruction` is still used as the prompt. Id
 ### Saved workflows break after updating
 
 Node names and internal IDs are stable. If a workflow breaks, check:
-- Width/height inputs are valid numbers (64-16384)
+- Width/height inputs are valid numbers (64-16384). The editor snaps those to a multiple of 8
 - JSON import input (if used) contains valid JSON
 - No custom modifications were made to widget names
+
+### Canvas size
+
+The size fields accept 64 to 16384. Those values are the width and height outputs.
+
+The open Ideogram 4 model is stricter: both sides must be multiples of 16, from 256 to 2048, and the aspect ratio cannot exceed 6:1. That rule is in the model's [inference reference](https://github.com/ideogram-oss/ideogram4/blob/main/docs/inference.md). The editor shows it next to the size fields when the current size does not qualify, and the note does not change the numbers. The spinner moves in steps of 16.
 
 For bugs or feature requests, please open an issue on GitHub.
 

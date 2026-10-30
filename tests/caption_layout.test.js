@@ -8,6 +8,7 @@ import {
   dimsFromAspect,
   fallbackRegion,
   ideogramBboxToRect,
+  ideogramResolutionWarning,
   indexesAfterClearingSelection,
   offsetAddedRegions,
   pasteRegions,
@@ -107,6 +108,26 @@ describe("ideogram bbox import", () => {
     assert.equal(rectToIdeogramBbox({ x: true, y: 0, w: 0.2, h: 0.2 }), null);
     assert.deepEqual(rectToIdeogramBbox({}), [0, 0, 0, 0]);
     assert.deepEqual(rectToIdeogramBbox({ x: 1e308, y: 0, w: 1e308, h: 0.2 }), [0, 1000, 200, 1000]);
+  });
+});
+
+describe("open model canvas size", () => {
+  const note = "Open Ideogram 4 model: multiples of 16, each side 256-2048, aspect at most 6:1";
+
+  it("accepts sizes the inference reference allows", () => {
+    assert.equal(ideogramResolutionWarning(1024, 1024), "");
+    assert.equal(ideogramResolutionWarning(256, 256), "");
+    assert.equal(ideogramResolutionWarning(2048, 2048), "");
+    assert.equal(ideogramResolutionWarning(1920, 1088), "");
+    assert.equal(ideogramResolutionWarning(1536, 256), "");
+    assert.equal(ideogramResolutionWarning(256, 1536), "");
+  });
+
+  it("notes a size the open model will not run", () => {
+    assert.equal(ideogramResolutionWarning(1920, 1080), note);
+    assert.equal(ideogramResolutionWarning(64, 64), note);
+    assert.equal(ideogramResolutionWarning(2880, 1440), note);
+    assert.equal(ideogramResolutionWarning(1552, 256), note);
   });
 });
 

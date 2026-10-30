@@ -264,6 +264,24 @@ const SCALE_ANCHORS = {
   "bottom-right": [1, 1],
 };
 
+/**
+ * Empty when width and height suit the open Ideogram 4 model.
+ * Otherwise a note of that model's rule. The hosted API uses its own preset
+ * list, so this does not say a size is invalid there.
+ * https://github.com/ideogram-oss/ideogram4/blob/main/docs/inference.md
+ */
+export function ideogramResolutionWarning(width, height) {
+  const w = Number(width);
+  const h = Number(height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return "";
+  const multiple = Number.isInteger(w) && Number.isInteger(h) && w % 16 === 0 && h % 16 === 0;
+  const inRange = w >= 256 && h >= 256 && w <= 2048 && h <= 2048;
+  const ratio = w / h;
+  const ratioOk = ratio >= 1 / 6 && ratio <= 6;
+  if (multiple && inRange && ratioOk) return "";
+  return "Open Ideogram 4 model: multiples of 16, each side 256-2048, aspect at most 6:1";
+}
+
 export function dimsFromAspect(aspectStr) {
   const m = String(aspectStr || "").trim().match(/^(\d+(?:\.\d+)?)\s*[:/x×]\s*(\d+(?:\.\d+)?)$/i);
   if (!m) return null;

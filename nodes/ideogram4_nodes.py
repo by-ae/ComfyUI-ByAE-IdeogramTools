@@ -656,10 +656,20 @@ Visual prompt builder for Ideogram 4's structured JSON caption format (Pro, base
 Connect the guid output to Preview BG Update. Background images are written to the ComfyUI temp
 folder and picked up automatically by the editor.""",
             inputs=[
-                io.Int.Input("width", default=1024, min=64, max=16384, step=8,
-                             tooltip="Canvas aspect width."),
-                io.Int.Input("height", default=1024, min=64, max=16384, step=8,
-                             tooltip="Canvas aspect height."),
+                io.Int.Input(
+                    "width", default=1024, min=64, max=16384, step=8,
+                    tooltip=(
+                        "Canvas aspect width (64-16384). The open Ideogram 4 model "
+                        "needs a multiple of 16 from 256 to 2048, aspect at most 6:1."
+                    ),
+                ),
+                io.Int.Input(
+                    "height", default=1024, min=64, max=16384, step=8,
+                    tooltip=(
+                        "Canvas aspect height (64-16384). The open Ideogram 4 model "
+                        "needs a multiple of 16 from 256 to 2048, aspect at most 6:1."
+                    ),
+                ),
                 io.Combo.Input(
                     "scale_mode",
                     display_name="Scale Mode (on width/height change)",
