@@ -10,6 +10,7 @@ import {
   ideogramBboxToRect,
   ideogramResolutionWarning,
   indexesAfterClearingSelection,
+  snapLayoutDim,
   offsetAddedRegions,
   pasteRegions,
   rectToIdeogramBbox,
@@ -108,6 +109,31 @@ describe("ideogram bbox import", () => {
     assert.equal(rectToIdeogramBbox({ x: true, y: 0, w: 0.2, h: 0.2 }), null);
     assert.deepEqual(rectToIdeogramBbox({}), [0, 0, 0, 0]);
     assert.deepEqual(rectToIdeogramBbox({ x: 1e308, y: 0, w: 1e308, h: 0.2 }), [0, 1000, 200, 1000]);
+  });
+});
+
+describe("canvas size fields", () => {
+  it("snaps a typed size to a multiple of 8 inside 64-16384", () => {
+    assert.equal(snapLayoutDim(1024), 1024);
+    assert.equal(snapLayoutDim(1001), 1000);
+    assert.equal(snapLayoutDim(1004), 1008);
+    assert.equal(snapLayoutDim(67), 64);
+    assert.equal(snapLayoutDim(63), 64);
+    assert.equal(snapLayoutDim(16384), 16384);
+    assert.equal(snapLayoutDim(16385), 16384);
+    assert.equal(snapLayoutDim(16380), 16384);
+    assert.equal(snapLayoutDim(1920), 1920);
+    assert.equal(snapLayoutDim("1080"), 1080);
+  });
+
+  it("uses the default when the field is empty or not a positive number", () => {
+    assert.equal(snapLayoutDim(""), 1024);
+    assert.equal(snapLayoutDim("  "), 1024);
+    assert.equal(snapLayoutDim(0), 1024);
+    assert.equal(snapLayoutDim(-20), 1024);
+    assert.equal(snapLayoutDim(Number.NaN), 1024);
+    assert.equal(snapLayoutDim(null), 1024);
+    assert.equal(snapLayoutDim(undefined, 512), 512);
   });
 });
 

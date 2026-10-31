@@ -8,6 +8,7 @@ import {
 } from "./ideogram4_shared.js";
 import {
   captionText, cleanPalette, dimsFromAspect, elementToRegion, ideogramResolutionWarning,
+  snapLayoutDim,
   indexesAfterClearingSelection,
   offsetAddedRegions, pasteRegions,
   regionLabel,
@@ -50,10 +51,7 @@ const LAYOUT_DIM_DEFAULT = 1024;
 const LAYOUT_OPACITY_DEFAULT = 0.5;
 
 function layoutDim(value, fallback = LAYOUT_DIM_DEFAULT) {
-  if (value == null || value === "") return fallback;
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return fallback;
-  return Math.max(64, Math.min(16384, Math.round(n)));
+  return snapLayoutDim(value, fallback);
 }
 
 function layoutOpacity(value, fallback = LAYOUT_OPACITY_DEFAULT) {
@@ -890,12 +888,8 @@ app.registerExtension({
         else drawCanvas();
       }
 
-      function roundDim(v) {
-        return Math.max(64, Math.min(16384, Math.round(layoutDim(v) / 8) * 8));
-      }
-
       function readLayoutDimsFromDom() {
-        return { w: roundDim(wInp.value), h: roundDim(hInp.value) };
+        return { w: layoutDim(wInp.value), h: layoutDim(hInp.value) };
       }
 
       function readUiState() {
@@ -923,6 +917,10 @@ app.registerExtension({
 
       function persistEditorState() {
         const ui = readUiState();
+        // The prompt uses the snapped size. Write it back so the field does
+        // not keep a typed number the width and height outputs will not use.
+        if (wInp.value !== String(ui.w)) wInp.value = String(ui.w);
+        if (hInp.value !== String(ui.h)) hInp.value = String(ui.h);
         ensureProps();
         node.properties.byae_layout_w = ui.w;
         node.properties.byae_layout_h = ui.h;

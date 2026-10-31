@@ -265,6 +265,22 @@ const SCALE_ANCHORS = {
 };
 
 /**
+ * Side length for the size fields and the width/height outputs.
+ * Round, clamp to 64-16384, then round to a multiple of 8 (the node step).
+ * Ties on a half step go to the larger multiple. An empty or non-positive
+ * value keeps the fallback, which the editor uses as 1024.
+ * The open model's multiple-of-16 rule is a separate note and does not
+ * change this number.
+ */
+export function snapLayoutDim(value, fallback = 1024) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  const clamped = Math.max(64, Math.min(16384, Math.round(n)));
+  const snapped = Math.round(clamped / 8) * 8;
+  return Math.max(64, Math.min(16384, snapped));
+}
+
+/**
  * Empty when width and height suit the open Ideogram 4 model.
  * Otherwise a note of that model's rule. The hosted API uses its own preset
  * list, so this does not say a size is invalid there.
