@@ -71,6 +71,28 @@ export function fallbackRegion(index) {
   };
 }
 
+/**
+ * Ideogram 4 caption object from pasted text, or null.
+ * One leading byte-order mark is ignored. compositional_deconstruction has
+ * to be an object: an array is truthy and would otherwise clear the canvas.
+ */
+export function parseCaptionText(text) {
+  if (typeof text !== "string") return null;
+  let raw = text.trim();
+  if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1).trim();
+  if (!raw) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const cd = parsed.compositional_deconstruction;
+  if (!cd || typeof cd !== "object" || Array.isArray(cd)) return null;
+  return parsed;
+}
+
 /** Caption text. Finite numbers are kept; other non-strings are dropped. */
 export function captionText(value) {
   if (typeof value === "string") return value;

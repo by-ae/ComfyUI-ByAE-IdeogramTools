@@ -13,6 +13,7 @@ import {
   snapLayoutDim,
   offsetAddedRegions,
   nextPasteNudge,
+  parseCaptionText,
   pasteRegions,
   rectToIdeogramBbox,
   regionCoordsFinite,
@@ -299,6 +300,24 @@ describe("pasted regions", () => {
     placed[0].palette.push("#000000");
     assert.deepEqual(src[0].palette, ["#FFFFFF"]);
     assert.deepEqual(src[0].storeRef, { type: "character", name: "Ada" });
+  });
+});
+
+describe("pasted caption text", () => {
+  it("accepts a caption with a leading byte-order mark", () => {
+    const cap = parseCaptionText(
+      '\uFEFF{"compositional_deconstruction":{"background":"sky","elements":[]}}',
+    );
+    assert.equal(cap.compositional_deconstruction.background, "sky");
+  });
+
+  it("rejects text that is not a caption object", () => {
+    assert.equal(parseCaptionText(""), null);
+    assert.equal(parseCaptionText("\uFEFF"), null);
+    assert.equal(parseCaptionText("{nope"), null);
+    assert.equal(parseCaptionText("[]"), null);
+    assert.equal(parseCaptionText('{"compositional_deconstruction":[]}'), null);
+    assert.equal(parseCaptionText('{"high_level_description":"only"}'), null);
   });
 });
 

@@ -81,6 +81,8 @@ The `import_json` input overrides the editor only when it is a JSON object. A le
 
 An object without `compositional_deconstruction` is still used as the prompt. Ideogram 4 requires that object, with a string `background` and a list `elements`. The console says when one of those is missing.
 
+Region data and the style palette must be JSON lists. A blank value is left out. Anything else is ignored, the rest of the caption is still built, and the console prints a line starting with `[ByAE Ideogram]` that names the field. A leading byte-order mark on those lists is ignored, the same way import JSON ignores one. Paste JSON in the editor does too, and it leaves the current canvas in place unless the pasted text is a caption object whose `compositional_deconstruction` is an object.
+
 ### Background image not updating
 
 - Verify the `guid` output from the builder is connected to Preview BG Update's `guid` input

@@ -9,6 +9,7 @@ import {
 } from "./ideogram4_shared.js";
 import {
   captionText, cleanPalette, dimsFromAspect, elementToRegion, ideogramResolutionWarning,
+  parseCaptionText,
   snapLayoutDim,
   indexesAfterClearingSelection,
   nextPasteNudge, offsetAddedRegions, pasteRegions,
@@ -1880,11 +1881,7 @@ app.registerExtension({
       }
 
       function tryParseCaption(t) {
-        if (!t) return null;
-        try {
-          const o = JSON.parse(t);
-          return (o && typeof o === "object" && o.compositional_deconstruction) ? o : null;
-        } catch (e) { return null; }
+        return parseCaptionText(t);
       }
 
       async function doImport() {

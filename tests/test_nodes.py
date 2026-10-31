@@ -11,6 +11,7 @@ from nodes.ideogram4_nodes import (
     _elements_from_boxes, _preview_edges, _render_preview, ImageDraw,
     save_bg_image_to_temp, _uint8_frame_kind, _rgb_image_from_uint8, Image,
     _parse_import_caption, _caption_field, _resolve_style, _editor_caption,
+    Ideogram4PromptBuilderKJEnhancedByAE, io,
 )
 
 
@@ -205,16 +206,39 @@ class TestPromptHelpers(unittest.TestCase):
         self.assertEqual(result, [{"x": 1}, {"y": 2}])
 
     def test_parse_json_list_invalid(self):
-        result = _parse_json_list("not json")
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            result = _parse_json_list("not json", "region data")
         self.assertEqual(result, [])
+        self.assertTrue(any("region data" in line and "not valid JSON" in line for line in cm.output))
 
     def test_parse_json_list_not_list(self):
-        result = _parse_json_list('{"key": "value"}')
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            result = _parse_json_list('{"key": "value"}', "style palette")
         self.assertEqual(result, [])
+        self.assertTrue(any("style palette" in line and "not a JSON list" in line for line in cm.output))
 
     def test_parse_json_list_empty(self):
-        result = _parse_json_list("")
-        self.assertEqual(result, [])
+        with self.assertNoLogs("byae.ideogram.prompt", level="WARNING"):
+            self.assertEqual(_parse_json_list(""), [])
+            self.assertEqual(_parse_json_list("   "), [])
+            self.assertEqual(_parse_json_list(None), [])
+            self.assertEqual(_parse_json_list("\ufeff[1, 2]"), [1, 2])
+
+    def test_bad_region_data_warns_once_and_keeps_the_caption(self):
+        io.NodeOutput.reset_mock()
+        with self.assertLogs("byae.ideogram.prompt", level="WARNING") as cm:
+            Ideogram4PromptBuilderKJEnhancedByAE.execute(
+                1024, 1024, "room", {"style": "none"},
+                elements_data="{nope",
+                style_palette_data="{}",
+            )
+        region = [line for line in cm.output if "region data" in line]
+        palette = [line for line in cm.output if "style palette" in line]
+        self.assertEqual(len(region), 1)
+        self.assertEqual(len(palette), 1)
+        prompt = io.NodeOutput.call_args.args[0]
+        self.assertIn('"background": "room"', prompt)
+        self.assertIn('"elements": []', prompt)
 
     def test_caption_to_boxes_valid(self):
         caption = {
