@@ -13,6 +13,19 @@ export function normalizeStoreName(name) {
   return String(name ?? "").trim().normalize("NFC");
 }
 
+/**
+ * Stored name this save would replace, or null.
+ * Saving the preset already linked to the region is an update, not a replacement.
+ */
+export function savedPresetCollision(existingNames, name, linkedName) {
+  const target = normalizeStoreName(name);
+  if (!target) return null;
+  const match = (existingNames || []).find((entry) => normalizeStoreName(entry) === target);
+  if (!match) return null;
+  if (linkedName && normalizeStoreName(linkedName) === target) return null;
+  return match;
+}
+
 export async function loadStores() {
   try {
     const resp = await fetch(STORE_API, {

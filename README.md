@@ -73,6 +73,8 @@ Load shows the request error (for example `HTTP 500`) when the store cannot be r
 - Ensure the ComfyUI user directory is writable
 - Try a shorter name (max 64 characters)
 
+Saving asks before it replaces a character, object, or scene that already uses that name. Saving again to the preset already linked to the region does not ask. If the preset list cannot be loaded, the save still goes ahead.
+
 ### Connected import JSON did not change the prompt
 
 The `import_json` input overrides the editor only when it is a JSON object. A leading UTF-8 byte-order mark is ignored. If the value is empty, not valid JSON, or a JSON array, the node keeps the editor caption and prints a line starting with `[ByAE Ideogram]`.

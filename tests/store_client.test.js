@@ -8,7 +8,9 @@ globalThis.window = {
   },
 };
 
-const { loadStores, deleteStoreEntry, saveStoreEntry, normalizeStoreName } = await import("../web/js/ideogram4_shared.js");
+const {
+  loadStores, deleteStoreEntry, saveStoreEntry, normalizeStoreName, savedPresetCollision,
+} = await import("../web/js/ideogram4_shared.js");
 
 describe("loadStores", () => {
   const originalFetch = globalThis.fetch;
@@ -51,6 +53,26 @@ describe("loadStores", () => {
       throw new Error("network down");
     };
     await assert.rejects(loadStores(), /network down/);
+  });
+});
+
+describe("savedPresetCollision", () => {
+  it("names a different preset that would be replaced", () => {
+    assert.equal(savedPresetCollision(["Ada", "Bea"], "Bea"), "Bea");
+    assert.equal(savedPresetCollision(["Ada"], "Cara"), null);
+    assert.equal(savedPresetCollision(["Ada"], "  "), null);
+    assert.equal(savedPresetCollision([], "Ada"), null);
+  });
+
+  it("does not treat an update of the linked preset as a replacement", () => {
+    assert.equal(savedPresetCollision(["Ada"], "Ada", "Ada"), null);
+    assert.equal(savedPresetCollision(["Ada", "Bea"], "Bea", "Ada"), "Bea");
+  });
+
+  it("matches a composed name to the stored spelling", () => {
+    const nfd = "Émilie".normalize("NFD");
+    assert.equal(savedPresetCollision(["Émilie"], nfd), "Émilie");
+    assert.equal(savedPresetCollision(["Émilie"], ` ${nfd} `, "Émilie"), null);
   });
 });
 

@@ -5,7 +5,7 @@ import {
 } from "./utility.js";
 import {
   loadStores, saveStoreEntry, deleteStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
-  normalizeStoreName,
+  normalizeStoreName, savedPresetCollision,
 } from "./ideogram4_shared.js";
 import {
   captionText, cleanPalette, dimsFromAspect, elementToRegion, ideogramResolutionWarning,
@@ -1959,9 +1959,11 @@ app.registerExtension({
       sceneSaveBtn.addEventListener("mousedown", (e) => e.stopPropagation());
       sceneSaveBtn.addEventListener("click", () => {
         showModal("Save Scene", [{ key: "name", label: "Scene name", placeholder: "my-scene" }], async (r) => {
-          const name = (r.name || "").trim();
+          const name = normalizeStoreName(r.name || "");
           if (!name) return;
           try {
+            const collision = savedPresetCollision(await existingPresetNames("scenes"), name);
+            if (collision && !confirm(`Replace saved scene "${collision}"? This cannot be undone.`)) return;
             await saveStoreEntry("scenes", name, captureSceneState());
             console.log("ByAE Ideogram: saved scene:", name);
           } catch (e) {
@@ -2056,13 +2058,30 @@ app.registerExtension({
         return ta;
       }
 
+      async function existingPresetNames(bucket) {
+        try {
+          const stores = await loadStores();
+          return Object.keys(stores[bucket] || {});
+        } catch (e) {
+          console.warn("ByAE Ideogram: could not check existing presets before save", e);
+          return [];
+        }
+      }
+
       async function persistBoxToStore(b, type, name) {
         const bucket = type === "object" ? "objects" : "characters";
+        const safeName = normalizeStoreName(name);
+        if (!safeName) return;
+        const linked = b.storeRef && b.storeRef.type === type ? b.storeRef.name : "";
         try {
-          const savedName = await saveStoreEntry(bucket, name, boxPayload(b));
+          if (normalizeStoreName(linked) !== safeName) {
+            const collision = savedPresetCollision(await existingPresetNames(bucket), safeName, linked);
+            if (collision && !confirm(`Replace saved ${type} "${collision}"? This cannot be undone.`)) return;
+          }
+          const savedName = await saveStoreEntry(bucket, safeName, boxPayload(b));
           b.storeRef = { type, name: savedName };
           commit();
-          console.log("ByAE Ideogram: saved", type, name);
+          console.log("ByAE Ideogram: saved", type, savedName);
         } catch (e) {
           console.error("ByAE Ideogram: failed to save:", e);
           alert("Failed to save: " + e.message);
