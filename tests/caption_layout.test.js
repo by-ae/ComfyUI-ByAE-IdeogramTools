@@ -8,13 +8,17 @@ import {
   dimsFromAspect,
   fallbackRegion,
   ideogramBboxToRect,
+  ideogramResolutionWarning,
+  indexesAfterClearingSelection,
   offsetAddedRegions,
   pasteRegions,
   rectToIdeogramBbox,
   regionCoordsFinite,
+  regionLabel,
   remapImportedRegions,
   topRegionIndex,
   staggerLoadedRegion,
+  swatchHex,
   transformBoxesContentUniform,
 } from "../web/js/caption_layout.js";
 
@@ -44,6 +48,11 @@ describe("ideogram bbox import", () => {
     assert.equal(captionText(true), "");
     assert.equal(captionText(Number.NaN), "");
     assert.equal(captionText(" keep "), " keep ");
+    assert.equal(regionLabel({ type: "text", text: 12, desc: 5 }), '"12" — 5');
+    assert.equal(regionLabel({ type: "obj", desc: true }), "");
+    assert.equal(regionLabel({ type: "obj", desc: { a: 1 } }), "");
+    assert.equal(typeof regionLabel({ type: "text", text: 0, desc: false }), "string");
+    assert.equal(regionLabel(null), "");
   });
 
   it("swaps inverted axes so the region can be hit-tested", () => {
@@ -102,6 +111,43 @@ describe("ideogram bbox import", () => {
   });
 });
 
+describe("open model canvas size", () => {
+  const note = "Open Ideogram 4 model: multiples of 16, each side 256-2048, aspect at most 6:1";
+
+  it("accepts sizes the inference reference allows", () => {
+    assert.equal(ideogramResolutionWarning(1024, 1024), "");
+    assert.equal(ideogramResolutionWarning(256, 256), "");
+    assert.equal(ideogramResolutionWarning(2048, 2048), "");
+    assert.equal(ideogramResolutionWarning(1920, 1088), "");
+    assert.equal(ideogramResolutionWarning(1536, 256), "");
+    assert.equal(ideogramResolutionWarning(256, 1536), "");
+  });
+
+  it("notes a size the open model will not run", () => {
+    assert.equal(ideogramResolutionWarning(1920, 1080), note);
+    assert.equal(ideogramResolutionWarning(64, 64), note);
+    assert.equal(ideogramResolutionWarning(2880, 1440), note);
+    assert.equal(ideogramResolutionWarning(1552, 256), note);
+  });
+});
+
+describe("deleting a selection", () => {
+  it("removes only the selected regions and leaves nothing active", () => {
+    const ending = indexesAfterClearingSelection(3, [0, 2]);
+    assert.deepEqual(ending, { count: 1, selected: [], active: -1 });
+  });
+
+  it("counts each selected index once and ignores indexes outside the list", () => {
+    const ending = indexesAfterClearingSelection(2, [0, 0, 5, -1]);
+    assert.deepEqual(ending, { count: 1, selected: [], active: -1 });
+  });
+
+  it("drops every region when the whole canvas is selected", () => {
+    const ending = indexesAfterClearingSelection(4, [0, 1, 2, 3]);
+    assert.deepEqual(ending, { count: 0, selected: [], active: -1 });
+  });
+});
+
 describe("overlapping regions", () => {
   const boxes = [
     { x: 0, y: 0, w: 0.8, h: 0.8, desc: "under" },
@@ -127,6 +173,20 @@ describe("color palettes", () => {
       cleanPalette([null, "", "red", "#fff", "#aabbcc", 1, true, "#12"]),
       ["#FFFFFF", "#AABBCC"],
     );
+  });
+
+  it("turns a pasted element palette into colors the picker can edit", () => {
+    const box = elementToRegion({
+      type: "obj",
+      desc: "shirt",
+      bbox: [0, 0, 100, 100],
+      color_palette: ["#fff", "red", "#aabbcc", "#123456", "#ABCDEF", "#010203", "extra"],
+    }, 0);
+    assert.deepEqual(box.palette, ["#FFFFFF", "#AABBCC", "#123456", "#ABCDEF", "#010203"]);
+    assert.equal(swatchHex("#fff"), "#ffffff");
+    assert.equal(swatchHex("#AABBCC"), "#aabbcc");
+    assert.equal(swatchHex("red"), null);
+    assert.equal(swatchHex("#GG0000"), null);
   });
 
   it("stops at the caller limit", () => {

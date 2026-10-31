@@ -78,13 +78,27 @@ export function captionText(value) {
   return "";
 }
 
+/** One line for the canvas. Always a string, so drawing can wrap it. */
+export function regionLabel(box) {
+  if (!box || typeof box !== "object") return "";
+  const desc = captionText(box.desc);
+  if (box.type === "text") {
+    const text = captionText(box.text);
+    if (text) return desc ? `"${text}" — ${desc}` : `"${text}"`;
+  }
+  return desc;
+}
+
 export function elementToRegion(el, idx) {
   if (!el || typeof el !== "object") return null;
   const box = {
     type: el.type === "text" ? "text" : "obj",
     text: captionText(el.text),
     desc: captionText(el.desc),
-    palette: Array.isArray(el.color_palette) ? el.color_palette.slice() : [],
+    // Ideogram 4 allows at most five uppercase #RRGGBB colors on an element.
+    // Shorthand and other values are dropped here so the editor stores the
+    // same colors the prompt will keep.
+    palette: cleanPalette(Array.isArray(el.color_palette) ? el.color_palette : [], 5),
   };
   const rect = ideogramBboxToRect(el.bbox);
   if (rect) Object.assign(box, rect);
@@ -108,6 +122,22 @@ function hitsRegion(mx, my, b, rx, ry) {
   if (my >= y1 && my <= y2 && Math.abs(mx - x1) < rx) return true;
   if (my >= y1 && my <= y2 && Math.abs(mx - x2) < rx) return true;
   return mx >= x1 && mx <= x2 && my >= y1 && my <= y2;
+}
+
+/**
+ * After every selected region is deleted, nothing stays active.
+ * Leaving the nearest survivor active made the next Delete remove it too.
+ */
+export function indexesAfterClearingSelection(count, selected) {
+  const total = Number.isInteger(count) && count > 0 ? count : 0;
+  const seen = new Set();
+  let removed = 0;
+  for (const i of selected || []) {
+    if (!Number.isInteger(i) || i < 0 || i >= total || seen.has(i)) continue;
+    seen.add(i);
+    removed += 1;
+  }
+  return { count: total - removed, selected: [], active: -1 };
 }
 
 /** Index of the topmost region under a normalized point, or -1. Later boxes are drawn above earlier ones. */
@@ -142,6 +172,12 @@ export function cleanPalette(colors, limit) {
     if (limit != null && out.length >= limit) break;
   }
   return out;
+}
+
+/** Lowercase #rrggbb for input[type=color]. Anything else is unusable there. */
+export function swatchHex(color) {
+  const hex = normalizeHex(color);
+  return hex ? hex.toLowerCase() : null;
 }
 
 function clamp01(v) {
@@ -227,6 +263,24 @@ const SCALE_ANCHORS = {
   bottom: [0.5, 1],
   "bottom-right": [1, 1],
 };
+
+/**
+ * Empty when width and height suit the open Ideogram 4 model.
+ * Otherwise a note of that model's rule. The hosted API uses its own preset
+ * list, so this does not say a size is invalid there.
+ * https://github.com/ideogram-oss/ideogram4/blob/main/docs/inference.md
+ */
+export function ideogramResolutionWarning(width, height) {
+  const w = Number(width);
+  const h = Number(height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return "";
+  const multiple = Number.isInteger(w) && Number.isInteger(h) && w % 16 === 0 && h % 16 === 0;
+  const inRange = w >= 256 && h >= 256 && w <= 2048 && h <= 2048;
+  const ratio = w / h;
+  const ratioOk = ratio >= 1 / 6 && ratio <= 6;
+  if (multiple && inRange && ratioOk) return "";
+  return "Open Ideogram 4 model: multiples of 16, each side 256-2048, aspect at most 6:1";
+}
 
 export function dimsFromAspect(aspectStr) {
   const m = String(aspectStr || "").trim().match(/^(\d+(?:\.\d+)?)\s*[:/x×]\s*(\d+(?:\.\d+)?)$/i);

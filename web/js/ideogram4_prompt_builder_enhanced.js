@@ -7,9 +7,12 @@ import {
   loadStores, saveStoreEntry, deleteStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
 } from "./ideogram4_shared.js";
 import {
-  captionText, cleanPalette, dimsFromAspect, elementToRegion, offsetAddedRegions, pasteRegions,
+  captionText, cleanPalette, dimsFromAspect, elementToRegion, ideogramResolutionWarning,
+  indexesAfterClearingSelection,
+  offsetAddedRegions, pasteRegions,
+  regionLabel,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
-  topRegionIndex,
+  swatchHex, topRegionIndex,
   transformBoxesContentUniform,
 } from "./caption_layout.js";
 
@@ -103,8 +106,8 @@ function normalizeBoxCoords(b) {
 function cloneBox(b) {
   const c = {
     x: b.x, y: b.y, w: b.w, h: b.h,
-    type: b.type || "obj", text: b.text || "", desc: b.desc || "",
-    palette: Array.isArray(b.palette) ? b.palette.slice() : [],
+    type: b.type || "obj", text: captionText(b.text), desc: captionText(b.desc),
+    palette: cleanPalette(b.palette, MAX_ELEM_COLORS),
   };
   if (b.nobbox) c.nobbox = true;
   if (b.storeRef) c.storeRef = { ...b.storeRef };
@@ -113,8 +116,8 @@ function cloneBox(b) {
 
 function boxPayload(b) {
   return {
-    type: b.type || "obj", text: b.text || "", desc: b.desc || "",
-    palette: Array.isArray(b.palette) ? b.palette.slice() : [],
+    type: b.type || "obj", text: captionText(b.text), desc: captionText(b.desc),
+    palette: cleanPalette(b.palette, MAX_ELEM_COLORS),
   };
 }
 
@@ -659,7 +662,7 @@ app.registerExtension({
       wInp.type = "number";
       wInp.min = "64";
       wInp.max = "16384";
-      wInp.step = "8";
+      wInp.step = "16";
       wInp.title = "Canvas width";
       wInp.value = String(LAYOUT_DIM_DEFAULT);
       const hInp = document.createElement("input");
@@ -667,7 +670,7 @@ app.registerExtension({
       hInp.type = "number";
       hInp.min = "64";
       hInp.max = "16384";
-      hInp.step = "8";
+      hInp.step = "16";
       hInp.title = "Canvas height";
       hInp.value = String(LAYOUT_DIM_DEFAULT);
       const scaleSel = document.createElement("select");
@@ -688,6 +691,8 @@ app.registerExtension({
       updateSizeBtn.title = "Apply width/height to the preview and scale regions";
       const sizePendingSpan = document.createElement("span");
       sizePendingSpan.style.cssText = "color:#888; font-size:11px; white-space:nowrap;";
+      const sizeWarnSpan = document.createElement("span");
+      sizeWarnSpan.style.cssText = "color:#c90; font-size:11px; white-space:nowrap;";
       const opacityLbl = document.createElement("span");
       opacityLbl.textContent = "Bg:";
       opacityLbl.title = "Background opacity over black";
@@ -795,6 +800,7 @@ app.registerExtension({
       sizeBar.appendChild(opacityVal);
       sizeBar.appendChild(sizeBarSpacer);
       sizeBar.appendChild(sizePendingSpan);
+      sizeBar.appendChild(sizeWarnSpan);
       wrap.appendChild(sizeBar);
       wrap.appendChild(bar);
       wrap.appendChild(sceneBar);
@@ -957,7 +963,12 @@ app.registerExtension({
             if (Array.isArray(parsed)) {
               node._boxes = parsed
                 .filter(regionCoordsFinite)
-                .map((b) => normalizeBoxCoords(b));
+                .map((b) => normalizeBoxCoords({
+                  ...b,
+                  text: captionText(b.text),
+                  desc: captionText(b.desc),
+                  palette: cleanPalette(b.palette, MAX_ELEM_COLORS),
+                }));
               node._activeIdx = node._boxes.length ? 0 : -1;
               node._selected = node._boxes.length ? new Set([0]) : new Set();
             }
@@ -968,7 +979,7 @@ app.registerExtension({
         if (p.byae_style_palette_data) {
           try {
             const sp = JSON.parse(p.byae_style_palette_data);
-            if (Array.isArray(sp)) node._stylePalette = sp.filter((c) => typeof c === "string");
+            if (Array.isArray(sp)) node._stylePalette = cleanPalette(sp, MAX_STYLE_COLORS);
           } catch (e) {
             console.error("ByAE Ideogram: failed to parse style_palette_data:", e);
           }
@@ -1012,6 +1023,11 @@ app.registerExtension({
           sizePendingSpan.textContent = `preview ${lw}×${lh}`;
           updateSizeBtn.classList.remove("active");
         }
+        const sizeNote = ideogramResolutionWarning(w, h);
+        sizeWarnSpan.textContent = sizeNote;
+        sizeWarnSpan.style.display = sizeNote ? "" : "none";
+        wInp.title = sizeNote ? `Canvas width. ${sizeNote}` : "Canvas width";
+        hInp.title = sizeNote ? `Canvas height. ${sizeNote}` : "Canvas height";
       }
 
       function applyUpdateSize() {
@@ -1361,8 +1377,7 @@ app.registerExtension({
           ctx.beginPath();
           ctx.rect(x1, y1, w, h);
           ctx.clip();
-          let body = b.desc || "";
-          if (b.type === "text" && b.text) body = `"${b.text}"` + (body ? " — " + body : "");
+          const body = regionLabel(b);
           if (body) {
             ctx.font = "11px sans-serif";
             ctx.fillStyle = "#fff";
@@ -1452,9 +1467,11 @@ app.registerExtension({
       }
 
       function removeSelected() {
+        const ending = indexesAfterClearingSelection(node._boxes.length, node._selected);
         const toRemove = [...node._selected].sort((a, b) => b - a);
         for (const i of toRemove) removeBox(i);
         node._selected = new Set();
+        node._activeIdx = ending.active;
       }
 
       canvasEl.addEventListener("mousedown", (e) => {
@@ -1854,7 +1871,7 @@ app.registerExtension({
         setWidgetVal("aesthetics", sd.aesthetics || "");
         setWidgetVal("lighting", sd.lighting || "");
         setWidgetVal("medium", sd.medium || "");
-        node._stylePalette = Array.isArray(sd.color_palette) ? sd.color_palette.slice() : [];
+        node._stylePalette = cleanPalette(sd.color_palette, MAX_STYLE_COLORS);
       }
 
       function tryParseCaption(t) {
@@ -1928,7 +1945,7 @@ app.registerExtension({
           setWidgetVal("style", kind);
           if (kind === "photo") setWidgetVal("style.photo", state.widgets?.photo || "");
           else if (kind === "art_style") setWidgetVal("style.art_style", state.widgets?.art_style || "");
-          node._stylePalette = Array.isArray(state.stylePalette) ? state.stylePalette.slice() : [];
+          node._stylePalette = cleanPalette(state.stylePalette, MAX_STYLE_COLORS);
           rebuildStylePalette();
         }
         setSelection(newIdxs.length ? newIdxs : (node._boxes.length ? [0] : []));
@@ -1972,14 +1989,22 @@ app.registerExtension({
       }
 
       function buildSwatchRow(container, arr, max, onEdit, onStruct) {
+        // input[type=color] accepts only #rrggbb. Other strings are replaced
+        // with #000000, so a pasted #fff used to open the picker on black.
+        const cleaned = cleanPalette(arr, max);
+        if (cleaned.length !== arr.length || cleaned.some((c, i) => c !== arr[i])) {
+          arr.splice(0, arr.length, ...cleaned);
+        }
         arr.forEach((hex, i) => {
+          const shown = swatchHex(hex);
+          if (!shown) return;
           const sw = document.createElement("div");
           sw.className = "byae-ideo-sw";
-          sw.style.background = hex;
+          sw.style.background = shown;
           sw.title = "Click to edit · right-click to remove";
           const inp = document.createElement("input");
           inp.type = "color";
-          inp.value = hex;
+          inp.value = shown;
           stopProp(sw);
           sw.addEventListener("click", () => inp.click());
           sw.addEventListener("contextmenu", (e) => {
@@ -2089,9 +2114,9 @@ app.registerExtension({
           const nb = {
             x: placed.x, y: placed.y, w: placed.w, h: placed.h,
             type: data.type || "obj",
-            text: data.text || "",
-            desc: data.desc || "",
-            palette: Array.isArray(data.palette) ? data.palette.slice() : [],
+            text: captionText(data.text),
+            desc: captionText(data.desc),
+            palette: cleanPalette(data.palette, MAX_ELEM_COLORS),
             storeRef: { type, name },
           };
           node._boxes.push(nb);
