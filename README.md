@@ -62,7 +62,7 @@ Load shows the request error (for example `HTTP 500`) when the store cannot be r
 
 **Store location:** Character, object, and scene presets are stored in `<ComfyUI user directory>/byae-ideogram-tools/` as JSON files (`characters.json`, `objects.json`, `scenes.json`).
 
-**Unicode support:** Preset names can include Unicode characters (e.g. 角色, Персонаж, Émilie). Names must start with a letter, number, or underscore, and can contain letters, numbers, spaces, underscores, and hyphens (up to 64 characters).
+**Unicode support:** Preset names can include Unicode characters (e.g. 角色, Персонаж, Émilie). Names must start with a letter, number, or underscore, and can contain letters, numbers, spaces, underscores, and hyphens (up to 64 characters). A name is stored in composed form, so a single É and an E followed by a combining accent are the same preset. A name longer than 64 characters is rejected with that limit in the error.
 
 **Corrupt file recovery:** A leading UTF-8 byte-order mark is ignored and the bucket loads normally. If a store file still cannot be used as a bucket (invalid JSON, or JSON that is not an object), it is moved to a backup named `<bucket>.json.corrupt-<timestamp>` and the bucket is treated as empty. When that backup name already exists, the new file gets an extra suffix so the earlier backup is kept. Other buckets continue to work normally, and saves to the recovered bucket work immediately.
 

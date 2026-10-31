@@ -26,15 +26,11 @@ async def put_store_entry(request: web.Request) -> web.Response:
     name = request.match_info.get("name", "")
     if bucket not in ("characters", "objects", "scenes"):
         return web.json_response({"error": "Invalid bucket"}, status=400)
-    if not name or len(name) > 128:
-        return web.json_response({"error": "Invalid or missing name"}, status=400)
-    
-    # Validate name using same regex as store.py for defense in depth
     try:
-        store._validate_name(name)
+        name = store._validate_name(name)
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=400)
-    
+
     # Check Content-Length to prevent oversized payloads
     content_length = request.content_length
     if content_length is not None and content_length > MAX_PAYLOAD_SIZE:
@@ -71,15 +67,11 @@ async def delete_store_entry(request: web.Request) -> web.Response:
     name = request.match_info.get("name", "")
     if bucket not in ("characters", "objects", "scenes"):
         return web.json_response({"error": "Invalid bucket"}, status=400)
-    if not name or len(name) > 128:
-        return web.json_response({"error": "Invalid or missing name"}, status=400)
-    
-    # Validate name using same regex as store.py for defense in depth
     try:
-        store._validate_name(name)
+        name = store._validate_name(name)
     except ValueError as e:
         return web.json_response({"error": str(e)}, status=400)
-    
+
     try:
         deleted = store.delete_entry(bucket, name)
         if not deleted:

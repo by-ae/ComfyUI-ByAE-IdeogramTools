@@ -241,6 +241,42 @@ class TestStore(unittest.TestCase):
         self.assertIn("NewScene", bucket)
         self.assertEqual(bucket["NewScene"]["data"], "value")
 
+    def test_unicode_names_that_look_the_same_are_one_preset(self):
+        import unicodedata
+        nfd = unicodedata.normalize("NFD", "Émilie")
+        nfc = unicodedata.normalize("NFC", "Émilie")
+        self.assertNotEqual(nfd, nfc)
+
+        save_entry("characters", nfd, {"desc": "first"})
+        save_entry("characters", nfc, {"desc": "second"})
+        bucket = load_bucket("characters")
+        self.assertEqual(list(bucket), [nfc])
+        self.assertEqual(bucket[nfc]["desc"], "second")
+
+        self.assertTrue(delete_entry("characters", nfd))
+        self.assertEqual(load_bucket("characters"), {})
+
+    def test_composed_and_decomposed_keys_in_one_file_collapse(self):
+        import unicodedata
+        nfd = unicodedata.normalize("NFD", "Émilie")
+        nfc = unicodedata.normalize("NFC", "Émilie")
+        bucket_path = os.path.join(self.temp_dir, "byae-ideogram-tools", "characters.json")
+        os.makedirs(os.path.dirname(bucket_path), exist_ok=True)
+        with open(bucket_path, "w", encoding="utf-8") as f:
+            json.dump({nfd: {"desc": "old"}, nfc: {"desc": "new"}, " Hero ": {"desc": "spaced"}}, f, ensure_ascii=False)
+
+        with self.assertLogs(store.logger, level="WARNING") as cm:
+            bucket = load_bucket("characters")
+        self.assertEqual(set(bucket), {nfc, "Hero"})
+        self.assertEqual(bucket[nfc]["desc"], "new")
+        self.assertEqual(bucket["Hero"]["desc"], "spaced")
+        self.assertTrue(any("Émilie" in line or nfd in line for line in cm.output))
+
+    def test_long_name_says_how_long_a_name_can_be(self):
+        with self.assertRaises(ValueError) as caught:
+            _validate_name("a" * 65)
+        self.assertIn("64", str(caught.exception))
+
     def test_unicode_character_names(self):
         # Test that Unicode names work correctly
         save_entry("characters", "角色123", {"desc": "Japanese character"})

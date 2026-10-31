@@ -8,7 +8,7 @@ globalThis.window = {
   },
 };
 
-const { loadStores, deleteStoreEntry } = await import("../web/js/ideogram4_shared.js");
+const { loadStores, deleteStoreEntry, saveStoreEntry, normalizeStoreName } = await import("../web/js/ideogram4_shared.js");
 
 describe("loadStores", () => {
   const originalFetch = globalThis.fetch;
@@ -54,6 +54,28 @@ describe("loadStores", () => {
   });
 });
 
+describe("saveStoreEntry", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("sends the composed name and returns the stored name", async () => {
+    const nfd = "Émilie".normalize("NFD");
+    let called;
+    globalThis.fetch = async (url, opts) => {
+      called = { url, method: opts.method, body: opts.body };
+      return { ok: true, json: async () => ({ ok: true, name: "Émilie" }) };
+    };
+    const saved = await saveStoreEntry("characters", nfd, { desc: "a" });
+    assert.equal(called.method, "PUT");
+    assert.equal(called.url, "/byae/ideogram/stores/characters/%C3%89milie");
+    assert.equal(called.body, JSON.stringify({ desc: "a" }));
+    assert.equal(saved, "Émilie");
+  });
+});
+
 describe("deleteStoreEntry", () => {
   const originalFetch = globalThis.fetch;
 
@@ -68,6 +90,21 @@ describe("deleteStoreEntry", () => {
       return { ok: true, json: async () => ({ ok: true }) };
     };
     await deleteStoreEntry("characters", "Émilie");
+    assert.equal(called.method, "DELETE");
+    assert.equal(called.url, "/byae/ideogram/stores/characters/%C3%89milie");
+  });
+
+  it("sends a composed form of a unicode name", async () => {
+    const nfd = "Émilie".normalize("NFD");
+    const nfc = "Émilie".normalize("NFC");
+    assert.notEqual(nfd, nfc);
+    assert.equal(normalizeStoreName(`  ${nfd}  `), nfc);
+    let called;
+    globalThis.fetch = async (url, opts) => {
+      called = { url, method: opts.method };
+      return { ok: true, json: async () => ({ ok: true }) };
+    };
+    await deleteStoreEntry("characters", nfd);
     assert.equal(called.method, "DELETE");
     assert.equal(called.url, "/byae/ideogram/stores/characters/%C3%89milie");
   });

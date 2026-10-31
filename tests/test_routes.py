@@ -98,6 +98,25 @@ class TestRoutes(AioHTTPTestCase):
         data = json.loads(response.body)
         self.assertIn("error", data)
 
+    async def test_put_store_entry_folds_unicode_name(self):
+        import unicodedata
+        nfd = unicodedata.normalize("NFD", "Émilie")
+        nfc = unicodedata.normalize("NFC", "Émilie")
+        request = MagicMock(spec=web.Request)
+        request.match_info = {"bucket": "characters", "name": nfd}
+        request.content_length = 20
+        request.read = AsyncMock(return_value=b'{"desc": "a"}')
+        request.json = AsyncMock(return_value={"desc": "a"})
+
+        response = await routes.put_store_entry(request)
+
+        self.assertEqual(response.status, 200)
+        data = json.loads(response.body)
+        self.assertEqual(data["name"], nfc)
+        bucket = store.load_bucket("characters")
+        self.assertEqual(set(bucket), {nfc})
+        self.assertEqual(bucket[nfc]["desc"], "a")
+
     async def test_put_store_entry_name_too_long(self):
         request = MagicMock(spec=web.Request)
         request.match_info = {"bucket": "characters", "name": "a" * 200}

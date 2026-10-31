@@ -5,6 +5,7 @@ import {
 } from "./utility.js";
 import {
   loadStores, saveStoreEntry, deleteStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
+  normalizeStoreName,
 } from "./ideogram4_shared.js";
 import {
   captionText, cleanPalette, dimsFromAspect, elementToRegion, ideogramResolutionWarning,
@@ -362,7 +363,7 @@ function showCharObjLoadModal(stores, onOk, onDeleted) {
 }
 
 function showSceneLoadModal(stores, onLoad) {
-  const names = () => Object.keys(stores.scenes || {}).sort();
+  const names = () => sortStoreNames(Object.keys(stores.scenes || {}));
   if (!names().length) {
     alert("No saved scenes.");
     return;
@@ -2058,8 +2059,8 @@ app.registerExtension({
       async function persistBoxToStore(b, type, name) {
         const bucket = type === "object" ? "objects" : "characters";
         try {
-          await saveStoreEntry(bucket, name, boxPayload(b));
-          b.storeRef = { type, name };
+          const savedName = await saveStoreEntry(bucket, name, boxPayload(b));
+          b.storeRef = { type, name: savedName };
           commit();
           console.log("ByAE Ideogram: saved", type, name);
         } catch (e) {
@@ -2091,9 +2092,10 @@ app.registerExtension({
       }
 
       function forgetStoreRef(type, name) {
+        const target = normalizeStoreName(name);
         let changed = false;
         for (const b of node._boxes) {
-          if (b.storeRef && b.storeRef.type === type && b.storeRef.name === name) {
+          if (b.storeRef && b.storeRef.type === type && normalizeStoreName(b.storeRef.name) === target) {
             delete b.storeRef;
             changed = true;
           }
