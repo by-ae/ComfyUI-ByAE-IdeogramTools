@@ -10,7 +10,7 @@ import {
   captionText, cleanPalette, dimsFromAspect, elementToRegion, ideogramResolutionWarning,
   snapLayoutDim,
   indexesAfterClearingSelection,
-  offsetAddedRegions, pasteRegions,
+  nextPasteNudge, offsetAddedRegions, pasteRegions,
   regionLabel,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
   swatchHex, topRegionIndex,
@@ -642,6 +642,7 @@ app.registerExtension({
       node._areaH = node._areaH || {};
       node._areaObservers = [];
       node._clipBoxes = null;
+      node._clipPasteCount = 0;
       node._bgDisplayUrl = null;
       node._bgUrl = null;
       node._bgFileMtime = 0;
@@ -1626,14 +1627,19 @@ app.registerExtension({
             const src = node._selected.size ? [...node._selected] : (node._activeIdx >= 0 ? [node._activeIdx] : []);
             if (!src.length) return;
             node._clipBoxes = src.map((i) => cloneBox(node._boxes[i]));
+            node._clipPasteCount = 0;
             return;
           }
           if (e.key === "v" || e.key === "V") {
             e.preventDefault();
             e.stopPropagation();
             if (!node._clipBoxes?.length) return;
+            // The clipboard stays on the original. A fixed nudge stacked
+            // every paste on the first copy.
+            const nudge = nextPasteNudge(node._clipPasteCount || 0);
+            node._clipPasteCount = (node._clipPasteCount || 0) + 1;
             const newIdxs = [];
-            for (const nb of pasteRegions(node._clipBoxes.map((b) => cloneBox(b)))) {
+            for (const nb of pasteRegions(node._clipBoxes.map((b) => cloneBox(b)), nudge)) {
               node._boxes.push(nb);
               newIdxs.push(node._boxes.length - 1);
             }

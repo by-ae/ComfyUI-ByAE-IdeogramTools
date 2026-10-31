@@ -211,8 +211,16 @@ export function offsetAddedRegions(boxes, nudge = 0.05) {
   }));
 }
 
+/** Each Ctrl+V moves this far from the copied region. The next paste adds another step. */
+export const PASTE_NUDGE = 0.03;
+
+export function nextPasteNudge(previousPastes) {
+  const done = Number.isInteger(previousPastes) && previousPastes > 0 ? previousPastes : 0;
+  return PASTE_NUDGE * (done + 1);
+}
+
 /** Ctrl+V: nudge a copy so it is visible, and do not keep the source store link. */
-export function pasteRegions(boxes, nudge = 0.03) {
+export function pasteRegions(boxes, nudge = PASTE_NUDGE) {
   return offsetAddedRegions(boxes, nudge).map((b) => {
     const copy = {
       ...b,

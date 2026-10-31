@@ -19,7 +19,7 @@ I may add other Ideogram 4 tools here in future, hence the name.
 - **Save/Load entire scenes** — save and restore full scenes (boxes, overview, aesthetic, style colors, and the rest); add imported boxes (selected by default) or wipe and replace the entire scene. Delete removes a saved scene
 - **Multi-select (Shift+click individual or Shift-drag to select and move/scale them all)** — Shift+drag a selection rectangle; any partially overlapping box is included, the entire selection can be moved around or scaled uniformly on the sides or corners. Shift+click a box to add or remove it from the selection
 - **Live background image** — Preview BG Update pushes a workflow image onto the builder canvas; opacity slider blends it over black
-- **Copy and paste** — Ctrl+C / Ctrl+V for selected boxes (geometry and field data)
+- **Copy and paste** — Ctrl+C / Ctrl+V for selected boxes (geometry and field data). Each paste steps the copy a little further so repeats do not stack
 - **Scale mode on resize** — center, corner anchors, or stretch when canvas width/height change. Non-stretch modes scale from the bounding box of your regions and crop unused canvas space when narrowing
 - **Paste JSON resize dialog** — when pasting layout JSON, choose how the source canvas was sized (don't care / same / dimensions / aspect ratio) and it will perform content-aware scaling of the pasted regions.
 - **Width and height outputs** — separate INT sockets for downstream workflow use

@@ -12,6 +12,7 @@ import {
   indexesAfterClearingSelection,
   snapLayoutDim,
   offsetAddedRegions,
+  nextPasteNudge,
   pasteRegions,
   rectToIdeogramBbox,
   regionCoordsFinite,
@@ -267,6 +268,21 @@ describe("pasted regions", () => {
     assert.ok(placed[0].x + placed[0].w <= 1 + 1e-9);
     assert.ok(placed[0].y + placed[0].h <= 1 + 1e-9);
     assert.equal(placed[0].desc, "edge");
+  });
+
+  it("steps the nudge so a second paste does not cover the first", () => {
+    const box = { x: 0.1, y: 0.2, w: 0.02, h: 0.02, desc: "copy" };
+    assert.equal(nextPasteNudge(0), 0.03);
+    assert.equal(nextPasteNudge(1), 0.06);
+    assert.equal(nextPasteNudge(2), 0.09);
+    const first = pasteRegions([box], nextPasteNudge(0));
+    const second = pasteRegions([box], nextPasteNudge(1));
+    near(first[0].x, 0.13);
+    near(second[0].x, 0.16);
+    near(second[0].y - first[0].y, 0.03);
+    const overlapX = first[0].x < second[0].x + second[0].w && first[0].x + first[0].w > second[0].x;
+    const overlapY = first[0].y < second[0].y + second[0].h && first[0].y + first[0].h > second[0].y;
+    assert.equal(overlapX && overlapY, false);
   });
 
   it("does not keep the source store link or share its palette array", () => {
