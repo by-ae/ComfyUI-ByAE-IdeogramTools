@@ -203,6 +203,10 @@ class TestPromptHelpers(unittest.TestCase):
         result = _dumps([{"a": 1}, {"b": 2}])
         self.assertIn("[\n", result)
         self.assertIn('"a": 1', result)
+        # A comma-space join left the next object on the same line as "}".
+        self.assertIn("},\n", result)
+        self.assertNotIn("}, ", result)
+        self.assertEqual(json.loads(result), [{"a": 1}, {"b": 2}])
 
     def test_dumps_dict(self):
         result = _dumps({"key": "value", "num": 123})

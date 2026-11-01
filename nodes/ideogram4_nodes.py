@@ -464,7 +464,7 @@ def _dumps(v, lvl=0):
             return "[]"
         if all(not isinstance(x, (dict, list)) for x in v):
             return "[" + ", ".join(_dumps(x, lvl) for x in v) + "]"
-        return "[\n" + ", ".join(pad + _dumps(x, lvl + 1) for x in v) + "\n" + end + "]"
+        return "[\n" + ",\n".join(pad + _dumps(x, lvl + 1) for x in v) + "\n" + end + "]"
     if isinstance(v, dict):
         if not v:
             return "{}"
