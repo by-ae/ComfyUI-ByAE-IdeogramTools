@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  backgroundPlateShown,
   captionText,
   cleanPalette,
   elementToRegion,
@@ -233,6 +234,16 @@ describe("overlapping regions", () => {
   it("still hits a handle that sits just outside the region", () => {
     assert.equal(topRegionIndex(boxes, 0.8, 0.4, 0.02, 0.02), 0);
     assert.equal(topRegionIndex([{ x: 0.5, y: 0.5, w: 0.1, h: 0.1 }], 0.62, 0.55, 0.03, 0.03), 0);
+  });
+});
+
+describe("background image plate", () => {
+  it("is black only while a reference image is actually drawn", () => {
+    assert.equal(backgroundPlateShown("/view?filename=bg.png", 0.5), true);
+    assert.equal(backgroundPlateShown("/view?filename=bg.png", 1), true);
+    assert.equal(backgroundPlateShown("/view?filename=bg.png", 0), false);
+    assert.equal(backgroundPlateShown("", 0.5), false);
+    assert.equal(backgroundPlateShown(null, 0.5), false);
   });
 });
 

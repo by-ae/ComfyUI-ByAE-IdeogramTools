@@ -228,6 +228,15 @@ export function cleanPalette(colors, limit) {
   return out;
 }
 
+/**
+ * The reference image is drawn with CSS opacity. The black plate is what
+ * that opacity blends over, matching the preview. Hidden when there is no
+ * image, so the empty canvas stays the editor gray.
+ */
+export function backgroundPlateShown(url, opacity) {
+  return Boolean(url) && Number(opacity) > 0;
+}
+
 /** Lowercase #rrggbb for input[type=color]. Anything else is unusable there. */
 export function swatchHex(color) {
   const hex = normalizeHex(color);
