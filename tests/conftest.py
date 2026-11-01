@@ -17,6 +17,17 @@ sys.modules['comfy_api.latest'] = MagicMock()
 sys.modules['comfy_api.latest.io'] = MagicMock()
 sys.modules['server'] = MagicMock()
 
+
+# A MagicMock base turns the node class into a mock, so the execute method
+# defined in the file is never the one tests call.
+class _ComfyNode:
+    pass
+
+
+_io = sys.modules['comfy_api.latest.io']
+_io.ComfyNode = _ComfyNode
+sys.modules['comfy_api.latest'].io = _io
+
 # Make the repo root importable as a package
 repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 parent_dir = os.path.dirname(repo_root)

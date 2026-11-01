@@ -19,7 +19,7 @@ I may add other Ideogram 4 tools here in future, hence the name.
 - **Save/Load entire scenes** — save and restore full scenes (boxes, overview, aesthetic, style colors, and the rest); add imported boxes (selected by default) or wipe and replace the entire scene. Delete removes a saved scene
 - **Multi-select (Shift+click individual or Shift-drag to select and move/scale them all)** — Shift+drag a selection rectangle; any partially overlapping box is included, the entire selection can be moved around or scaled uniformly on the sides or corners. Shift+click a box to add or remove it from the selection
 - **Live background image** — Preview BG Update pushes a workflow image onto the builder canvas; opacity slider blends it over black
-- **Copy and paste** — Ctrl+C / Ctrl+V for selected boxes (geometry and field data)
+- **Copy and paste** — Ctrl+C / Ctrl+V for selected boxes (geometry and field data). Each paste steps the copy a little further so repeats do not stack
 - **Scale mode on resize** — center, corner anchors, or stretch when canvas width/height change. Non-stretch modes scale from the bounding box of your regions and crop unused canvas space when narrowing
 - **Paste JSON resize dialog** — when pasting layout JSON, choose how the source canvas was sized (don't care / same / dimensions / aspect ratio) and it will perform content-aware scaling of the pasted regions.
 - **Width and height outputs** — separate INT sockets for downstream workflow use
@@ -62,7 +62,7 @@ Load shows the request error (for example `HTTP 500`) when the store cannot be r
 
 **Store location:** Character, object, and scene presets are stored in `<ComfyUI user directory>/byae-ideogram-tools/` as JSON files (`characters.json`, `objects.json`, `scenes.json`).
 
-**Unicode support:** Preset names can include Unicode characters (e.g. 角色, Персонаж, Émilie). Names must start with a letter, number, or underscore, and can contain letters, numbers, spaces, underscores, and hyphens (up to 64 characters).
+**Unicode support:** Preset names can include Unicode characters (e.g. 角色, Персонаж, Émilie). Names must start with a letter, number, or underscore, and can contain letters, numbers, spaces, underscores, and hyphens (up to 64 characters). A name is stored in composed form, so a single É and an E followed by a combining accent are the same preset. A name longer than 64 characters is rejected with that limit in the error.
 
 **Corrupt file recovery:** A leading UTF-8 byte-order mark is ignored and the bucket loads normally. If a store file still cannot be used as a bucket (invalid JSON, or JSON that is not an object), it is moved to a backup named `<bucket>.json.corrupt-<timestamp>` and the bucket is treated as empty. When that backup name already exists, the new file gets an extra suffix so the earlier backup is kept. Other buckets continue to work normally, and saves to the recovered bucket work immediately.
 
@@ -73,11 +73,15 @@ Load shows the request error (for example `HTTP 500`) when the store cannot be r
 - Ensure the ComfyUI user directory is writable
 - Try a shorter name (max 64 characters)
 
+Saving asks before it replaces a character, object, or scene that already uses that name. Saving again to the preset already linked to the region does not ask. If the preset list cannot be loaded, the save still goes ahead.
+
 ### Connected import JSON did not change the prompt
 
 The `import_json` input overrides the editor only when it is a JSON object. A leading UTF-8 byte-order mark is ignored. If the value is empty, not valid JSON, or a JSON array, the node keeps the editor caption and prints a line starting with `[ByAE Ideogram]`.
 
 An object without `compositional_deconstruction` is still used as the prompt. Ideogram 4 requires that object, with a string `background` and a list `elements`. The console says when one of those is missing.
+
+Region data and the style palette must be JSON lists. A blank value is left out. Anything else is ignored, the rest of the caption is still built, and the console prints a line starting with `[ByAE Ideogram]` that names the field. A leading byte-order mark on those lists is ignored, the same way import JSON ignores one. Paste JSON in the editor does too, and it leaves the current canvas in place unless the pasted text is a caption object whose `compositional_deconstruction` is an object.
 
 ### Background image not updating
 
@@ -89,13 +93,13 @@ An object without `compositional_deconstruction` is still used as the prompt. Id
 ### Saved workflows break after updating
 
 Node names and internal IDs are stable. If a workflow breaks, check:
-- Width/height inputs are valid numbers (64-16384). The editor snaps those to a multiple of 8
+- Width/height inputs are valid numbers (64-16384). The editor snaps those to a multiple of 8 and shows the snapped number in the size field
 - JSON import input (if used) contains valid JSON
 - No custom modifications were made to widget names
 
 ### Canvas size
 
-The size fields accept 64 to 16384. Those values are the width and height outputs.
+The size fields accept 64 to 16384. They snap to a multiple of 8, the fields show that snapped number, and those numbers are the width and height outputs.
 
 The open Ideogram 4 model is stricter: both sides must be multiples of 16, from 256 to 2048, and the aspect ratio cannot exceed 6:1. That rule is in the model's [inference reference](https://github.com/ideogram-oss/ideogram4/blob/main/docs/inference.md). The editor shows it next to the size fields when the current size does not qualify, and the note does not change the numbers. The spinner moves in steps of 16.
 

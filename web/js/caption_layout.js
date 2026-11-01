@@ -71,6 +71,28 @@ export function fallbackRegion(index) {
   };
 }
 
+/**
+ * Ideogram 4 caption object from pasted text, or null.
+ * One leading byte-order mark is ignored. compositional_deconstruction has
+ * to be an object: an array is truthy and would otherwise clear the canvas.
+ */
+export function parseCaptionText(text) {
+  if (typeof text !== "string") return null;
+  let raw = text.trim();
+  if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1).trim();
+  if (!raw) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const cd = parsed.compositional_deconstruction;
+  if (!cd || typeof cd !== "object" || Array.isArray(cd)) return null;
+  return parsed;
+}
+
 /** Caption text. Finite numbers are kept; other non-strings are dropped. */
 export function captionText(value) {
   if (typeof value === "string") return value;
@@ -211,8 +233,16 @@ export function offsetAddedRegions(boxes, nudge = 0.05) {
   }));
 }
 
+/** Each Ctrl+V moves this far from the copied region. The next paste adds another step. */
+export const PASTE_NUDGE = 0.03;
+
+export function nextPasteNudge(previousPastes) {
+  const done = Number.isInteger(previousPastes) && previousPastes > 0 ? previousPastes : 0;
+  return PASTE_NUDGE * (done + 1);
+}
+
 /** Ctrl+V: nudge a copy so it is visible, and do not keep the source store link. */
-export function pasteRegions(boxes, nudge = 0.03) {
+export function pasteRegions(boxes, nudge = PASTE_NUDGE) {
   return offsetAddedRegions(boxes, nudge).map((b) => {
     const copy = {
       ...b,
@@ -263,6 +293,22 @@ const SCALE_ANCHORS = {
   bottom: [0.5, 1],
   "bottom-right": [1, 1],
 };
+
+/**
+ * Side length for the size fields and the width/height outputs.
+ * Round, clamp to 64-16384, then round to a multiple of 8 (the node step).
+ * Ties on a half step go to the larger multiple. An empty or non-positive
+ * value keeps the fallback, which the editor uses as 1024.
+ * The open model's multiple-of-16 rule is a separate note and does not
+ * change this number.
+ */
+export function snapLayoutDim(value, fallback = 1024) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  const clamped = Math.max(64, Math.min(16384, Math.round(n)));
+  const snapped = Math.round(clamped / 8) * 8;
+  return Math.max(64, Math.min(16384, snapped));
+}
 
 /**
  * Empty when width and height suit the open Ideogram 4 model.

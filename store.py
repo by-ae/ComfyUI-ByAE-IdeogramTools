@@ -8,6 +8,7 @@ import re
 import tempfile
 import threading
 import time
+import unicodedata
 
 import folder_paths
 
@@ -16,6 +17,7 @@ _BUCKETS = frozenset({"characters", "objects", "scenes"})
 # Allow Unicode letters, numbers, spaces, underscores, and hyphens
 # Must start with a letter or number (Unicode-aware)
 _SAFE_NAME = re.compile(r"^[\w][\w\- ]{0,63}$", re.UNICODE)
+_MAX_NAME_LEN = 64
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +56,32 @@ def _bucket_path(bucket: str) -> str:
 
 
 def _validate_name(name: str) -> str:
-    name = (name or "").strip()
+    # A letter plus a combining accent does not match the composed letter,
+    # and the combining mark is not a word character, so the name was rejected.
+    name = unicodedata.normalize("NFC", (name or "").strip())
+    if len(name) > _MAX_NAME_LEN:
+        raise ValueError(f"Invalid name (max {_MAX_NAME_LEN} characters)")
     if not _SAFE_NAME.match(name):
         raise ValueError("Invalid name (use letters, numbers, spaces, _ or -)")
     return name
+
+
+def _canonicalize_bucket(data: dict) -> dict:
+    """One key per composed name. A later entry wins when two keys fold together."""
+    cleaned = {}
+    for key, value in data.items():
+        if not isinstance(key, str):
+            continue
+        name = unicodedata.normalize("NFC", key.strip())
+        if not name:
+            continue
+        if name in cleaned:
+            logger.warning(
+                "ByAE Ideogram: store name %r matches preset %r; keeping the later entry",
+                key, name,
+            )
+        cleaned[name] = value
+    return cleaned
 
 
 def _backup_unreadable(path: str, reason) -> None:
@@ -88,7 +112,7 @@ def _read_json(path: str) -> dict:
         _backup_unreadable(path, e)
         return {}
     if isinstance(data, dict):
-        return data
+        return _canonicalize_bucket(data)
     # A JSON array or other value is valid JSON but not a bucket. Leaving it
     # in place made the next save overwrite it with no backup.
     _backup_unreadable(path, f"expected a JSON object, got {type(data).__name__}")

@@ -8,6 +8,24 @@ export const BUILDER_CLASS = "Ideogram4PromptBuilderKJEnhancedByAE";
 export const PREVIEW_UPDATE_CLASS = "Ideogram4PromptBuilderKJPreviewUpdateByAE";
 const STORE_API = "/byae/ideogram/stores";
 
+/** Composed form, so a letter plus a combining accent matches the stored preset. */
+export function normalizeStoreName(name) {
+  return String(name ?? "").trim().normalize("NFC");
+}
+
+/**
+ * Stored name this save would replace, or null.
+ * Saving the preset already linked to the region is an update, not a replacement.
+ */
+export function savedPresetCollision(existingNames, name, linkedName) {
+  const target = normalizeStoreName(name);
+  if (!target) return null;
+  const match = (existingNames || []).find((entry) => normalizeStoreName(entry) === target);
+  if (!match) return null;
+  if (linkedName && normalizeStoreName(linkedName) === target) return null;
+  return match;
+}
+
 export async function loadStores() {
   try {
     const resp = await fetch(STORE_API, {
@@ -28,7 +46,8 @@ export async function loadStores() {
 }
 
 export async function saveStoreEntry(bucket, name, data) {
-  const resp = await fetch(`${STORE_API}/${bucket}/${encodeURIComponent(name)}`, {
+  const safeName = normalizeStoreName(name);
+  const resp = await fetch(`${STORE_API}/${bucket}/${encodeURIComponent(safeName)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -42,10 +61,17 @@ export async function saveStoreEntry(bucket, name, data) {
     } catch (e) { /* ignore */ }
     throw new Error(msg);
   }
+  let saved = safeName;
+  try {
+    const body = await resp.json();
+    if (typeof body?.name === "string" && body.name) saved = body.name;
+  } catch (e) { /* the write succeeded; keep the name we sent */ }
+  return saved;
 }
 
 export async function deleteStoreEntry(bucket, name) {
-  const resp = await fetch(`${STORE_API}/${bucket}/${encodeURIComponent(name)}`, {
+  const safeName = normalizeStoreName(name);
+  const resp = await fetch(`${STORE_API}/${bucket}/${encodeURIComponent(safeName)}`, {
     method: "DELETE",
     signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined
   });

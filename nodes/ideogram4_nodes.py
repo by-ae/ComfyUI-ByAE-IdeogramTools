@@ -543,14 +543,22 @@ def _resolve_style(style):
 
 
 def _editor_caption(background, style, high_level_description="", aesthetics="", lighting="",
-                    medium="", style_palette_data="", elements_data=""):
-    """Caption dict for the editor fields. Unusable values are coerced, not raised."""
+                    medium="", style_palette_data="", elements_data="",
+                    parsed_boxes=None, parsed_style_colors=None):
+    """Caption dict for the editor fields. Unusable values are coerced, not raised.
+
+    parsed_boxes and parsed_style_colors skip a second read of the same JSON.
+    The prompt node parses each field once so a bad value is reported once.
+    """
     background = _caption_field(background)
     high_level_description = _caption_field(high_level_description)
     aesthetics = _caption_field(aesthetics)
     lighting = _caption_field(lighting)
     medium = _caption_field(medium)
-    boxes = _parse_json_list(elements_data)
+    if isinstance(parsed_boxes, list):
+        boxes = parsed_boxes
+    else:
+        boxes = _parse_json_list(elements_data, "region data")
 
     caption = {}
     if high_level_description.strip():
@@ -565,7 +573,11 @@ def _editor_caption(background, style, high_level_description="", aesthetics="",
         else:
             sd["medium"] = medium
             sd["art_style"] = art_style
-        palette = _palette(_parse_json_list(style_palette_data), STYLE_PALETTE_MAX)
+        if isinstance(parsed_style_colors, list):
+            palette_src = parsed_style_colors
+        else:
+            palette_src = _parse_json_list(style_palette_data, "style palette")
+        palette = _palette(palette_src, STYLE_PALETTE_MAX)
         if palette:
             sd["color_palette"] = palette
         caption["style_description"] = sd
@@ -629,14 +641,45 @@ def _parse_import_caption(import_json):
     return cap
 
 
-def _parse_json_list(s):
-    if s:
-        try:
-            v = json.loads(s)
-            if isinstance(v, list):
-                return v
-        except (json.JSONDecodeError, TypeError, ValueError):
-            pass
+def _parse_json_list(s, label="JSON list"):
+    """Return a JSON list, or [] when the value cannot be used as one.
+
+    None, a blank string, and a list with one leading byte-order mark stay
+    quiet. Anything else is ignored and reported, and the caption continues.
+    """
+    if s is None:
+        return []
+    if not isinstance(s, str):
+        _prompt_warn(
+            "%s was ignored because it was %s, not a JSON list. "
+            "The prompt continued without those values.",
+            label,
+            type(s).__name__,
+        )
+        return []
+    text = s.strip()
+    if text.startswith("\ufeff"):
+        text = text[1:].strip()
+    if not text:
+        return []
+    try:
+        value = json.loads(text)
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        _prompt_warn(
+            "%s was ignored because it is not valid JSON (%s). "
+            "The prompt continued without those values.",
+            label,
+            exc,
+        )
+        return []
+    if isinstance(value, list):
+        return value
+    _prompt_warn(
+        "%s was ignored because it is a %s, not a JSON list. "
+        "The prompt continued without those values.",
+        label,
+        type(value).__name__,
+    )
     return []
 
 
@@ -817,13 +860,14 @@ folder and picked up automatically by the editor.""",
             preview = _render_preview(_caption_to_boxes(cap), width, height, guid, background_opacity)
             return io.NodeOutput(_dumps(cap), preview, width, height, guid)
 
+        boxes = _parse_json_list(elements_data, "region data")
+        style_colors = _parse_json_list(style_palette_data, "style palette")
         caption = _editor_caption(
             background, style, high_level_description, aesthetics, lighting, medium,
             style_palette_data, elements_data,
+            parsed_boxes=boxes, parsed_style_colors=style_colors,
         )
-        preview = _render_preview(
-            _parse_json_list(elements_data), width, height, guid, background_opacity,
-        )
+        preview = _render_preview(boxes, width, height, guid, background_opacity)
         return io.NodeOutput(_dumps(caption), preview, width, height, guid)
 
 

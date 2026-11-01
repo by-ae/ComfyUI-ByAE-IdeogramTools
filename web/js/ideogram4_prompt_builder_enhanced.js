@@ -5,11 +5,14 @@ import {
 } from "./utility.js";
 import {
   loadStores, saveStoreEntry, deleteStoreEntry, installBuilderQueueHooks, installBgUpdateListener,
+  normalizeStoreName, savedPresetCollision,
 } from "./ideogram4_shared.js";
 import {
   captionText, cleanPalette, dimsFromAspect, elementToRegion, ideogramResolutionWarning,
+  parseCaptionText,
+  snapLayoutDim,
   indexesAfterClearingSelection,
-  offsetAddedRegions, pasteRegions,
+  nextPasteNudge, offsetAddedRegions, pasteRegions,
   regionLabel,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
   swatchHex, topRegionIndex,
@@ -50,10 +53,7 @@ const LAYOUT_DIM_DEFAULT = 1024;
 const LAYOUT_OPACITY_DEFAULT = 0.5;
 
 function layoutDim(value, fallback = LAYOUT_DIM_DEFAULT) {
-  if (value == null || value === "") return fallback;
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return fallback;
-  return Math.max(64, Math.min(16384, Math.round(n)));
+  return snapLayoutDim(value, fallback);
 }
 
 function layoutOpacity(value, fallback = LAYOUT_OPACITY_DEFAULT) {
@@ -364,7 +364,7 @@ function showCharObjLoadModal(stores, onOk, onDeleted) {
 }
 
 function showSceneLoadModal(stores, onLoad) {
-  const names = () => Object.keys(stores.scenes || {}).sort();
+  const names = () => sortStoreNames(Object.keys(stores.scenes || {}));
   if (!names().length) {
     alert("No saved scenes.");
     return;
@@ -644,6 +644,7 @@ app.registerExtension({
       node._areaH = node._areaH || {};
       node._areaObservers = [];
       node._clipBoxes = null;
+      node._clipPasteCount = 0;
       node._bgDisplayUrl = null;
       node._bgUrl = null;
       node._bgFileMtime = 0;
@@ -890,12 +891,8 @@ app.registerExtension({
         else drawCanvas();
       }
 
-      function roundDim(v) {
-        return Math.max(64, Math.min(16384, Math.round(layoutDim(v) / 8) * 8));
-      }
-
       function readLayoutDimsFromDom() {
-        return { w: roundDim(wInp.value), h: roundDim(hInp.value) };
+        return { w: layoutDim(wInp.value), h: layoutDim(hInp.value) };
       }
 
       function readUiState() {
@@ -923,6 +920,10 @@ app.registerExtension({
 
       function persistEditorState() {
         const ui = readUiState();
+        // The prompt uses the snapped size. Write it back so the field does
+        // not keep a typed number the width and height outputs will not use.
+        if (wInp.value !== String(ui.w)) wInp.value = String(ui.w);
+        if (hInp.value !== String(ui.h)) hInp.value = String(ui.h);
         ensureProps();
         node.properties.byae_layout_w = ui.w;
         node.properties.byae_layout_h = ui.h;
@@ -1628,14 +1629,19 @@ app.registerExtension({
             const src = node._selected.size ? [...node._selected] : (node._activeIdx >= 0 ? [node._activeIdx] : []);
             if (!src.length) return;
             node._clipBoxes = src.map((i) => cloneBox(node._boxes[i]));
+            node._clipPasteCount = 0;
             return;
           }
           if (e.key === "v" || e.key === "V") {
             e.preventDefault();
             e.stopPropagation();
             if (!node._clipBoxes?.length) return;
+            // The clipboard stays on the original. A fixed nudge stacked
+            // every paste on the first copy.
+            const nudge = nextPasteNudge(node._clipPasteCount || 0);
+            node._clipPasteCount = (node._clipPasteCount || 0) + 1;
             const newIdxs = [];
-            for (const nb of pasteRegions(node._clipBoxes.map((b) => cloneBox(b)))) {
+            for (const nb of pasteRegions(node._clipBoxes.map((b) => cloneBox(b)), nudge)) {
               node._boxes.push(nb);
               newIdxs.push(node._boxes.length - 1);
             }
@@ -1875,11 +1881,7 @@ app.registerExtension({
       }
 
       function tryParseCaption(t) {
-        if (!t) return null;
-        try {
-          const o = JSON.parse(t);
-          return (o && typeof o === "object" && o.compositional_deconstruction) ? o : null;
-        } catch (e) { return null; }
+        return parseCaptionText(t);
       }
 
       async function doImport() {
@@ -1954,9 +1956,11 @@ app.registerExtension({
       sceneSaveBtn.addEventListener("mousedown", (e) => e.stopPropagation());
       sceneSaveBtn.addEventListener("click", () => {
         showModal("Save Scene", [{ key: "name", label: "Scene name", placeholder: "my-scene" }], async (r) => {
-          const name = (r.name || "").trim();
+          const name = normalizeStoreName(r.name || "");
           if (!name) return;
           try {
+            const collision = savedPresetCollision(await existingPresetNames("scenes"), name);
+            if (collision && !confirm(`Replace saved scene "${collision}"? This cannot be undone.`)) return;
             await saveStoreEntry("scenes", name, captureSceneState());
             console.log("ByAE Ideogram: saved scene:", name);
           } catch (e) {
@@ -2051,13 +2055,30 @@ app.registerExtension({
         return ta;
       }
 
+      async function existingPresetNames(bucket) {
+        try {
+          const stores = await loadStores();
+          return Object.keys(stores[bucket] || {});
+        } catch (e) {
+          console.warn("ByAE Ideogram: could not check existing presets before save", e);
+          return [];
+        }
+      }
+
       async function persistBoxToStore(b, type, name) {
         const bucket = type === "object" ? "objects" : "characters";
+        const safeName = normalizeStoreName(name);
+        if (!safeName) return;
+        const linked = b.storeRef && b.storeRef.type === type ? b.storeRef.name : "";
         try {
-          await saveStoreEntry(bucket, name, boxPayload(b));
-          b.storeRef = { type, name };
+          if (normalizeStoreName(linked) !== safeName) {
+            const collision = savedPresetCollision(await existingPresetNames(bucket), safeName, linked);
+            if (collision && !confirm(`Replace saved ${type} "${collision}"? This cannot be undone.`)) return;
+          }
+          const savedName = await saveStoreEntry(bucket, safeName, boxPayload(b));
+          b.storeRef = { type, name: savedName };
           commit();
-          console.log("ByAE Ideogram: saved", type, name);
+          console.log("ByAE Ideogram: saved", type, savedName);
         } catch (e) {
           console.error("ByAE Ideogram: failed to save:", e);
           alert("Failed to save: " + e.message);
@@ -2087,9 +2108,10 @@ app.registerExtension({
       }
 
       function forgetStoreRef(type, name) {
+        const target = normalizeStoreName(name);
         let changed = false;
         for (const b of node._boxes) {
-          if (b.storeRef && b.storeRef.type === type && b.storeRef.name === name) {
+          if (b.storeRef && b.storeRef.type === type && normalizeStoreName(b.storeRef.name) === target) {
             delete b.storeRef;
             changed = true;
           }

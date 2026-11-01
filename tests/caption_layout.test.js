@@ -10,7 +10,10 @@ import {
   ideogramBboxToRect,
   ideogramResolutionWarning,
   indexesAfterClearingSelection,
+  snapLayoutDim,
   offsetAddedRegions,
+  nextPasteNudge,
+  parseCaptionText,
   pasteRegions,
   rectToIdeogramBbox,
   regionCoordsFinite,
@@ -108,6 +111,31 @@ describe("ideogram bbox import", () => {
     assert.equal(rectToIdeogramBbox({ x: true, y: 0, w: 0.2, h: 0.2 }), null);
     assert.deepEqual(rectToIdeogramBbox({}), [0, 0, 0, 0]);
     assert.deepEqual(rectToIdeogramBbox({ x: 1e308, y: 0, w: 1e308, h: 0.2 }), [0, 1000, 200, 1000]);
+  });
+});
+
+describe("canvas size fields", () => {
+  it("snaps a typed size to a multiple of 8 inside 64-16384", () => {
+    assert.equal(snapLayoutDim(1024), 1024);
+    assert.equal(snapLayoutDim(1001), 1000);
+    assert.equal(snapLayoutDim(1004), 1008);
+    assert.equal(snapLayoutDim(67), 64);
+    assert.equal(snapLayoutDim(63), 64);
+    assert.equal(snapLayoutDim(16384), 16384);
+    assert.equal(snapLayoutDim(16385), 16384);
+    assert.equal(snapLayoutDim(16380), 16384);
+    assert.equal(snapLayoutDim(1920), 1920);
+    assert.equal(snapLayoutDim("1080"), 1080);
+  });
+
+  it("uses the default when the field is empty or not a positive number", () => {
+    assert.equal(snapLayoutDim(""), 1024);
+    assert.equal(snapLayoutDim("  "), 1024);
+    assert.equal(snapLayoutDim(0), 1024);
+    assert.equal(snapLayoutDim(-20), 1024);
+    assert.equal(snapLayoutDim(Number.NaN), 1024);
+    assert.equal(snapLayoutDim(null), 1024);
+    assert.equal(snapLayoutDim(undefined, 512), 512);
   });
 });
 
@@ -243,6 +271,21 @@ describe("pasted regions", () => {
     assert.equal(placed[0].desc, "edge");
   });
 
+  it("steps the nudge so a second paste does not cover the first", () => {
+    const box = { x: 0.1, y: 0.2, w: 0.02, h: 0.02, desc: "copy" };
+    assert.equal(nextPasteNudge(0), 0.03);
+    assert.equal(nextPasteNudge(1), 0.06);
+    assert.equal(nextPasteNudge(2), 0.09);
+    const first = pasteRegions([box], nextPasteNudge(0));
+    const second = pasteRegions([box], nextPasteNudge(1));
+    near(first[0].x, 0.13);
+    near(second[0].x, 0.16);
+    near(second[0].y - first[0].y, 0.03);
+    const overlapX = first[0].x < second[0].x + second[0].w && first[0].x + first[0].w > second[0].x;
+    const overlapY = first[0].y < second[0].y + second[0].h && first[0].y + first[0].h > second[0].y;
+    assert.equal(overlapX && overlapY, false);
+  });
+
   it("does not keep the source store link or share its palette array", () => {
     const src = [{
       x: 0.1, y: 0.2, w: 0.2, h: 0.2,
@@ -257,6 +300,24 @@ describe("pasted regions", () => {
     placed[0].palette.push("#000000");
     assert.deepEqual(src[0].palette, ["#FFFFFF"]);
     assert.deepEqual(src[0].storeRef, { type: "character", name: "Ada" });
+  });
+});
+
+describe("pasted caption text", () => {
+  it("accepts a caption with a leading byte-order mark", () => {
+    const cap = parseCaptionText(
+      '\uFEFF{"compositional_deconstruction":{"background":"sky","elements":[]}}',
+    );
+    assert.equal(cap.compositional_deconstruction.background, "sky");
+  });
+
+  it("rejects text that is not a caption object", () => {
+    assert.equal(parseCaptionText(""), null);
+    assert.equal(parseCaptionText("\uFEFF"), null);
+    assert.equal(parseCaptionText("{nope"), null);
+    assert.equal(parseCaptionText("[]"), null);
+    assert.equal(parseCaptionText('{"compositional_deconstruction":[]}'), null);
+    assert.equal(parseCaptionText('{"high_level_description":"only"}'), null);
   });
 });
 
