@@ -326,6 +326,95 @@ class TestStore(unittest.TestCase):
             self.assertIn("iteration", bucket[f"char{i}"])
             self.assertEqual(bucket[f"char{i}"]["value"], i)
 
+    def test_backup_of_a_bad_bucket_holds_the_write_lock(self):
+        # A load used to parse a non-object bucket, drop the file, then rename
+        # it. A save in that gap wrote a good file, and the load moved that
+        # file into the corrupt backup.
+        store_dir = os.path.join(self.temp_dir, "byae-ideogram-tools")
+        os.makedirs(store_dir, exist_ok=True)
+        bucket_path = os.path.join(store_dir, "characters.json")
+        with open(bucket_path, "w", encoding="utf-8") as f:
+            f.write("[1]")
+
+        with store._BUCKET_LOCKS_GUARD:
+            store._BUCKET_LOCKS.pop("characters", None)
+
+        observed = {}
+        real_backup = store._backup_unreadable
+
+        def wrapped(path, reason):
+            lock = store._BUCKET_LOCKS.get("characters")
+            if lock is None:
+                observed["held"] = False
+            else:
+                acquired = lock.acquire(blocking=False)
+                if acquired:
+                    lock.release()
+                    observed["held"] = False
+                else:
+                    observed["held"] = True
+            return real_backup(path, reason)
+
+        with patch("store._backup_unreadable", wrapped):
+            self.assertEqual(load_bucket("characters"), {})
+
+        self.assertTrue(observed.get("held"))
+        self.assertFalse(os.path.exists(bucket_path))
+
+    def test_bucket_that_disappears_while_opening_is_empty(self):
+        # isfile can succeed and open can still fail when another load renames
+        # the file. That used to raise and the store route turned it into HTTP 500.
+        store_dir = os.path.join(self.temp_dir, "byae-ideogram-tools")
+        os.makedirs(store_dir, exist_ok=True)
+        bucket_path = os.path.join(store_dir, "objects.json")
+        real_isfile = os.path.isfile
+
+        def isfile(path):
+            if path == bucket_path:
+                return True
+            return real_isfile(path)
+
+        with patch("store.os.path.isfile", side_effect=isfile):
+            self.assertEqual(load_bucket("objects"), {})
+
+    def test_concurrent_loads_of_a_bad_bucket_keep_a_single_backup(self):
+        import threading
+
+        store_dir = os.path.join(self.temp_dir, "byae-ideogram-tools")
+        os.makedirs(store_dir, exist_ok=True)
+        bucket_path = os.path.join(store_dir, "scenes.json")
+        original = "[1, 2, 3]"
+        with open(bucket_path, "w", encoding="utf-8") as f:
+            f.write(original)
+
+        start = threading.Barrier(8)
+        errors = []
+
+        def worker():
+            start.wait()
+            try:
+                load_bucket("scenes")
+            except Exception as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(errors, [])
+        backups = [
+            name for name in os.listdir(store_dir)
+            if name.startswith("scenes.json.corrupt-")
+        ]
+        self.assertEqual(len(backups), 1)
+        with open(os.path.join(store_dir, backups[0]), encoding="utf-8") as f:
+            self.assertEqual(f.read(), original)
+        self.assertFalse(os.path.exists(bucket_path))
+        save_entry("scenes", "After", {"desc": 1})
+        self.assertEqual(load_bucket("scenes")["After"]["desc"], 1)
+
     def test_first_bucket_lock_excludes_other_writers(self):
         import threading
         import time

@@ -86,6 +86,12 @@ class TestPromptHelpers(unittest.TestCase):
         result = _norm_bbox({"x": 1e308, "y": 0.0, "w": 1e308, "h": 0.2})
         self.assertEqual(result, [0, 1000, 200, 1000])
 
+    def test_norm_bbox_half_steps_round_like_the_editor(self):
+        # 2.5 and 0.5. Copy JSON uses JS Math.round (half toward +inf).
+        # Python round() uses ties-to-even, which made the prompt one unit off.
+        box = {"x": 0.0025, "y": 0.0005, "w": 0.001, "h": 0.001}
+        self.assertEqual(_norm_bbox(box), [1, 3, 2, 4])
+
     def test_elements_from_boxes_omits_unusable_bbox(self):
         elements = _elements_from_boxes([
             {"type": "obj", "desc": "bad", "x": "nope", "y": 0, "w": 0.2, "h": 0.2},
@@ -109,6 +115,12 @@ class TestPromptHelpers(unittest.TestCase):
         self.assertEqual(
             _preview_edges({"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4}, 100, 50),
             (10, 10, 40, 30),
+        )
+
+    def test_preview_edges_half_pixel_rounds_like_the_editor(self):
+        self.assertEqual(
+            _preview_edges({"x": 0.005, "y": 0, "w": 0.01, "h": 0.02}, 100, 100),
+            (1, 0, 2, 2),
         )
 
     def test_elements_keep_schema_types_when_fields_are_not_strings(self):
@@ -191,6 +203,10 @@ class TestPromptHelpers(unittest.TestCase):
         result = _dumps([{"a": 1}, {"b": 2}])
         self.assertIn("[\n", result)
         self.assertIn('"a": 1', result)
+        # A comma-space join left the next object on the same line as "}".
+        self.assertIn("},\n", result)
+        self.assertNotIn("}, ", result)
+        self.assertEqual(json.loads(result), [{"a": 1}, {"b": 2}])
 
     def test_dumps_dict(self):
         result = _dumps({"key": "value", "num": 123})

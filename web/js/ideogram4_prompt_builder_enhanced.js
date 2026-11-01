@@ -8,10 +8,12 @@ import {
   normalizeStoreName, savedPresetCollision,
 } from "./ideogram4_shared.js";
 import {
+  backgroundPlateShown,
   captionText, cleanPalette, dimsFromAspect, elementToRegion, ideogramResolutionWarning,
   parseCaptionText,
   snapLayoutDim,
   indexesAfterClearingSelection,
+  selectionAfterRemovingBox,
   nextPasteNudge, offsetAddedRegions, pasteRegions,
   regionLabel,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
@@ -128,6 +130,7 @@ function injectStyle() {
   s.textContent = `
     .byae-ideo-wrap { display:flex; flex-direction:column; overflow:hidden; position:relative; pointer-events:auto; gap:4px; width:100%; box-sizing:border-box; }
     .byae-ideo-canvas-wrap { position:relative; flex:0 0 auto; width:100%; border-radius:4px; overflow:hidden; background:#1a1a1a; }
+    .byae-ideo-bg-plate { position:absolute; inset:0; background:#000; pointer-events:none; display:none; }
     .byae-ideo-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; pointer-events:none; display:none; }
     .byae-ideo-canvas { cursor:crosshair; display:block; width:100%; height:auto; position:relative; z-index:1; background:transparent; border-radius:4px; outline:none; }
     .byae-ideo-bar { display:flex; align-items:center; gap:6px; font:11px sans-serif; color:#aaa; user-select:none; padding:0 2px; flex:0 0 auto; flex-wrap:wrap; width:100%; box-sizing:border-box; }
@@ -752,6 +755,8 @@ app.registerExtension({
 
       const canvasWrap = document.createElement("div");
       canvasWrap.className = "byae-ideo-canvas-wrap";
+      const bgPlate = document.createElement("div");
+      bgPlate.className = "byae-ideo-bg-plate";
       const bgImgEl = document.createElement("img");
       bgImgEl.className = "byae-ideo-bg";
       bgImgEl.alt = "";
@@ -765,6 +770,7 @@ app.registerExtension({
       const canvasEl = document.createElement("canvas");
       canvasEl.className = "byae-ideo-canvas";
       canvasEl.tabIndex = 0;
+      canvasWrap.appendChild(bgPlate);
       canvasWrap.appendChild(bgImgEl);
       canvasWrap.appendChild(canvasEl);
       let ctx = canvasEl.getContext("2d");
@@ -1453,18 +1459,13 @@ app.registerExtension({
       function commit() { persistEditorState(); renderPanel(); drawCanvas(); updateTokens(); }
 
       function removeBox(i) {
+        const ending = selectionAfterRemovingBox(
+          node._boxes.length, node._selected, node._activeIdx, i,
+        );
+        if (ending.count === node._boxes.length) return;
         node._boxes.splice(i, 1);
-        const newSel = new Set();
-        for (const s of node._selected) {
-          if (s < i) newSel.add(s);
-          else if (s > i) newSel.add(s - 1);
-        }
-        node._selected = newSel;
-        if (node._boxes.length === 0) node._activeIdx = -1;
-        else if (i <= node._activeIdx) node._activeIdx = Math.max(0, node._activeIdx - 1);
-        if (node._activeIdx >= 0 && !node._selected.has(node._activeIdx)) {
-          if (node._selected.size) node._activeIdx = [...node._selected][0];
-        }
+        node._selected = new Set(ending.selected);
+        node._activeIdx = ending.active;
       }
 
       function removeSelected() {
@@ -2237,11 +2238,16 @@ app.registerExtension({
       }
 
       function syncBgDisplay() {
+        const host = getEditorHost();
         const { bgImgEl: bg } = getLiveCanvas();
+        const plate = host?.querySelector?.(".byae-ideo-bg-plate");
         const url = node._bgDisplayUrl || "";
         const op = getBgOpacity();
         if (!bg) return;
-        if (url && op > 0) {
+        // Opacity blends the image with whatever is painted behind it. The
+        // plate is black so that matches the preview, which composites onto black.
+        const show = backgroundPlateShown(url, op);
+        if (show) {
           if (bg.dataset.byaeSrc !== url) {
             bg.dataset.byaeSrc = url;
             bg.src = url;
@@ -2253,6 +2259,7 @@ app.registerExtension({
           bg.removeAttribute("src");
           bg.style.display = "none";
         }
+        if (plate) plate.style.display = show ? "block" : "none";
       }
 
       function applyBgDisplay(displayUrl) {

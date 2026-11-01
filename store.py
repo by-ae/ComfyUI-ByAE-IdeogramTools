@@ -108,6 +108,10 @@ def _read_json(path: str) -> dict:
         # that used to move an otherwise valid bucket aside as corrupt.
         with open(path, encoding="utf-8-sig") as f:
             data = json.load(f)
+    except FileNotFoundError:
+        # Another reader can rename the file after the isfile check. A missing
+        # bucket is empty; raising made the store route return HTTP 500.
+        return {}
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         _backup_unreadable(path, e)
         return {}
@@ -147,7 +151,12 @@ def _write_json(path: str, data: dict) -> None:
 
 
 def load_bucket(bucket: str) -> dict:
-    return _read_json(_bucket_path(bucket))
+    # Hold the write lock across the read and any backup. Without it, a load
+    # can rename a file that a save has already replaced, and two loads can
+    # open a file the other has just moved aside.
+    path = _bucket_path(bucket)
+    with _bucket_lock(bucket):
+        return _read_json(path)
 
 
 def load_all() -> dict:

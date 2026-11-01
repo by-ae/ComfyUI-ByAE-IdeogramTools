@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  backgroundPlateShown,
   captionText,
   cleanPalette,
   elementToRegion,
@@ -10,6 +11,7 @@ import {
   ideogramBboxToRect,
   ideogramResolutionWarning,
   indexesAfterClearingSelection,
+  selectionAfterRemovingBox,
   snapLayoutDim,
   offsetAddedRegions,
   nextPasteNudge,
@@ -104,6 +106,8 @@ describe("ideogram bbox import", () => {
 
   it("exports a usable bbox and drops coordinates that are not finite", () => {
     assert.deepEqual(rectToIdeogramBbox({ x: 0.1, y: 0.2, w: 0.3, h: 0.4 }), [200, 100, 600, 400]);
+    // Halves go toward +inf, the same rule the prompt node uses.
+    assert.deepEqual(rectToIdeogramBbox({ x: 0.0025, y: 0.0005, w: 0.001, h: 0.001 }), [1, 3, 2, 4]);
     assert.deepEqual(rectToIdeogramBbox({ x: "0.1", y: "0.2", w: "0.3", h: "0.4" }), [200, 100, 600, 400]);
     assert.deepEqual(rectToIdeogramBbox({ x: 0.5, y: 0.6, w: -0.2, h: -0.1 }), [500, 300, 600, 500]);
     assert.equal(rectToIdeogramBbox({ x: Number.NaN, y: 0.2, w: 0.3, h: 0.4 }), null);
@@ -176,6 +180,44 @@ describe("deleting a selection", () => {
   });
 });
 
+describe("removing one region", () => {
+  it("does not focus a neighbor after the selected region is deleted", () => {
+    assert.deepEqual(selectionAfterRemovingBox(3, [1], 1, 1), {
+      count: 2, selected: [], active: -1,
+    });
+  });
+
+  it("keeps the other selected region and shifts later indexes", () => {
+    assert.deepEqual(selectionAfterRemovingBox(4, [0, 2], 2, 0), {
+      count: 3, selected: [1], active: 1,
+    });
+  });
+
+  it("moves the active region with an earlier deletion and keeps selection order", () => {
+    assert.deepEqual(selectionAfterRemovingBox(4, [3, 1], 3, 0), {
+      count: 3, selected: [2, 0], active: 2,
+    });
+  });
+
+  it("points at the remaining selection when the active region goes away", () => {
+    assert.deepEqual(selectionAfterRemovingBox(3, [0, 2], 2, 2), {
+      count: 2, selected: [0], active: 0,
+    });
+  });
+
+  it("clears the canvas when the last region is removed", () => {
+    assert.deepEqual(selectionAfterRemovingBox(1, [0], 0, 0), {
+      count: 0, selected: [], active: -1,
+    });
+  });
+
+  it("ignores an index that is not on the canvas", () => {
+    assert.deepEqual(selectionAfterRemovingBox(2, [0], 0, 5), {
+      count: 2, selected: [0], active: 0,
+    });
+  });
+});
+
 describe("overlapping regions", () => {
   const boxes = [
     { x: 0, y: 0, w: 0.8, h: 0.8, desc: "under" },
@@ -192,6 +234,16 @@ describe("overlapping regions", () => {
   it("still hits a handle that sits just outside the region", () => {
     assert.equal(topRegionIndex(boxes, 0.8, 0.4, 0.02, 0.02), 0);
     assert.equal(topRegionIndex([{ x: 0.5, y: 0.5, w: 0.1, h: 0.1 }], 0.62, 0.55, 0.03, 0.03), 0);
+  });
+});
+
+describe("background image plate", () => {
+  it("is black only while a reference image is actually drawn", () => {
+    assert.equal(backgroundPlateShown("/view?filename=bg.png", 0.5), true);
+    assert.equal(backgroundPlateShown("/view?filename=bg.png", 1), true);
+    assert.equal(backgroundPlateShown("/view?filename=bg.png", 0), false);
+    assert.equal(backgroundPlateShown("", 0.5), false);
+    assert.equal(backgroundPlateShown(null, 0.5), false);
   });
 });
 

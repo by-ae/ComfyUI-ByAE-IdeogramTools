@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import os
 import re
 
@@ -341,17 +342,26 @@ def _render_preview(boxes, width, height, bg_guid="", background_opacity=0.5):
     return torch.from_numpy(arr).unsqueeze(0)
 
 
+def _round_half_up(value):
+    """Nearest integer, halves toward +inf. Matches JS Math.round.
+
+    Python round() uses ties-to-even, so a caption edge on x.5 disagreed
+    with Copy JSON by one unit.
+    """
+    return int(math.floor(value + 0.5))
+
+
 def _scale_axis(value):
     """Map one finite axis onto Ideogram's integer 0-1000 range.
 
-    Clamp before rounding. round() raises OverflowError once value * 1000
-    exceeds the float range, which a hand-edited region can do.
+    Values outside 0-1 are clamped before scaling. A huge finite coordinate
+    used to overflow inside round().
     """
     if value >= 1:
         return 1000
     if value <= 0:
         return 0
-    return int(round(value * 1000))
+    return _round_half_up(value * 1000)
 
 
 def _box_coords(box):
@@ -399,7 +409,7 @@ def _preview_edges(box, rw, rh):
             return scale
         if value <= 0:
             return 0
-        return max(0, min(scale, int(round(value * scale))))
+        return max(0, min(scale, _round_half_up(value * scale)))
 
     x1, y1, x2, y2 = edge(x, rw), edge(y, rh), edge(x + w, rw), edge(y + h, rh)
     if x2 < x1:
@@ -454,7 +464,7 @@ def _dumps(v, lvl=0):
             return "[]"
         if all(not isinstance(x, (dict, list)) for x in v):
             return "[" + ", ".join(_dumps(x, lvl) for x in v) + "]"
-        return "[\n" + ", ".join(pad + _dumps(x, lvl + 1) for x in v) + "\n" + end + "]"
+        return "[\n" + ",\n".join(pad + _dumps(x, lvl + 1) for x in v) + "\n" + end + "]"
     if isinstance(v, dict):
         if not v:
             return "{}"
