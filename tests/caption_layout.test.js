@@ -104,6 +104,8 @@ describe("ideogram bbox import", () => {
 
   it("exports a usable bbox and drops coordinates that are not finite", () => {
     assert.deepEqual(rectToIdeogramBbox({ x: 0.1, y: 0.2, w: 0.3, h: 0.4 }), [200, 100, 600, 400]);
+    // Halves go toward +inf, the same rule the prompt node uses.
+    assert.deepEqual(rectToIdeogramBbox({ x: 0.0025, y: 0.0005, w: 0.001, h: 0.001 }), [1, 3, 2, 4]);
     assert.deepEqual(rectToIdeogramBbox({ x: "0.1", y: "0.2", w: "0.3", h: "0.4" }), [200, 100, 600, 400]);
     assert.deepEqual(rectToIdeogramBbox({ x: 0.5, y: 0.6, w: -0.2, h: -0.1 }), [500, 300, 600, 500]);
     assert.equal(rectToIdeogramBbox({ x: Number.NaN, y: 0.2, w: 0.3, h: 0.4 }), null);
