@@ -10,6 +10,7 @@ import {
   ideogramBboxToRect,
   ideogramResolutionWarning,
   indexesAfterClearingSelection,
+  selectionAfterRemovingBox,
   snapLayoutDim,
   offsetAddedRegions,
   nextPasteNudge,
@@ -175,6 +176,44 @@ describe("deleting a selection", () => {
   it("drops every region when the whole canvas is selected", () => {
     const ending = indexesAfterClearingSelection(4, [0, 1, 2, 3]);
     assert.deepEqual(ending, { count: 0, selected: [], active: -1 });
+  });
+});
+
+describe("removing one region", () => {
+  it("does not focus a neighbor after the selected region is deleted", () => {
+    assert.deepEqual(selectionAfterRemovingBox(3, [1], 1, 1), {
+      count: 2, selected: [], active: -1,
+    });
+  });
+
+  it("keeps the other selected region and shifts later indexes", () => {
+    assert.deepEqual(selectionAfterRemovingBox(4, [0, 2], 2, 0), {
+      count: 3, selected: [1], active: 1,
+    });
+  });
+
+  it("moves the active region with an earlier deletion and keeps selection order", () => {
+    assert.deepEqual(selectionAfterRemovingBox(4, [3, 1], 3, 0), {
+      count: 3, selected: [2, 0], active: 2,
+    });
+  });
+
+  it("points at the remaining selection when the active region goes away", () => {
+    assert.deepEqual(selectionAfterRemovingBox(3, [0, 2], 2, 2), {
+      count: 2, selected: [0], active: 0,
+    });
+  });
+
+  it("clears the canvas when the last region is removed", () => {
+    assert.deepEqual(selectionAfterRemovingBox(1, [0], 0, 0), {
+      count: 0, selected: [], active: -1,
+    });
+  });
+
+  it("ignores an index that is not on the canvas", () => {
+    assert.deepEqual(selectionAfterRemovingBox(2, [0], 0, 5), {
+      count: 2, selected: [0], active: 0,
+    });
   });
 });
 

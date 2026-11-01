@@ -12,6 +12,7 @@ import {
   parseCaptionText,
   snapLayoutDim,
   indexesAfterClearingSelection,
+  selectionAfterRemovingBox,
   nextPasteNudge, offsetAddedRegions, pasteRegions,
   regionLabel,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
@@ -1453,18 +1454,13 @@ app.registerExtension({
       function commit() { persistEditorState(); renderPanel(); drawCanvas(); updateTokens(); }
 
       function removeBox(i) {
+        const ending = selectionAfterRemovingBox(
+          node._boxes.length, node._selected, node._activeIdx, i,
+        );
+        if (ending.count === node._boxes.length) return;
         node._boxes.splice(i, 1);
-        const newSel = new Set();
-        for (const s of node._selected) {
-          if (s < i) newSel.add(s);
-          else if (s > i) newSel.add(s - 1);
-        }
-        node._selected = newSel;
-        if (node._boxes.length === 0) node._activeIdx = -1;
-        else if (i <= node._activeIdx) node._activeIdx = Math.max(0, node._activeIdx - 1);
-        if (node._activeIdx >= 0 && !node._selected.has(node._activeIdx)) {
-          if (node._selected.size) node._activeIdx = [...node._selected][0];
-        }
+        node._selected = new Set(ending.selected);
+        node._activeIdx = ending.active;
       }
 
       function removeSelected() {

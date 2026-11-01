@@ -162,6 +162,38 @@ export function indexesAfterClearingSelection(count, selected) {
   return { count: total - removed, selected: [], active: -1 };
 }
 
+/**
+ * Selection after one region is removed.
+ * Deleting the last selected region leaves nothing active. Leaving the
+ * previous region active made the next Delete remove it too.
+ */
+export function selectionAfterRemovingBox(count, selected, active, removed) {
+  const total = Number.isInteger(count) && count > 0 ? count : 0;
+  const current = [];
+  const seen = new Set();
+  for (const i of selected || []) {
+    if (!Number.isInteger(i) || i < 0 || i >= total || seen.has(i)) continue;
+    seen.add(i);
+    current.push(i);
+  }
+  let nextActive = Number.isInteger(active) ? active : -1;
+  if (!Number.isInteger(removed) || removed < 0 || removed >= total) {
+    return { count: total, selected: current, active: nextActive };
+  }
+  const nextSelected = [];
+  for (const i of current) {
+    if (i < removed) nextSelected.push(i);
+    else if (i > removed) nextSelected.push(i - 1);
+  }
+  const nextCount = total - 1;
+  if (nextCount === 0) nextActive = -1;
+  else if (removed <= nextActive) nextActive = Math.max(0, nextActive - 1);
+  if (nextActive >= 0 && !nextSelected.includes(nextActive)) {
+    nextActive = nextSelected.length ? nextSelected[0] : -1;
+  }
+  return { count: nextCount, selected: nextSelected, active: nextActive };
+}
+
 /** Index of the topmost region under a normalized point, or -1. Later boxes are drawn above earlier ones. */
 export function topRegionIndex(boxes, x, y, rx = 0, ry = 0) {
   const list = boxes || [];
