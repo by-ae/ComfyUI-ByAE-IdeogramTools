@@ -58,17 +58,54 @@ export function rectToIdeogramBbox(box) {
   return [ymin, xmin, ymax, xmax];
 }
 
+const FALLBACK_COLS = 4;
+const FALLBACK_W = 0.22;
+const FALLBACK_H = 0.14;
+const FALLBACK_X0 = 0.02;
+const FALLBACK_Y0 = 0.02;
+const FALLBACK_XSTEP = 0.25;
+const FALLBACK_YSTEP = 0.17;
+
+function fallbackOrigin(index) {
+  const row = Math.floor(index / FALLBACK_COLS);
+  const col = index % FALLBACK_COLS;
+  return {
+    x: FALLBACK_X0 + col * FALLBACK_XSTEP,
+    y: FALLBACK_Y0 + row * FALLBACK_YSTEP,
+  };
+}
+
+function countFallback(pred) {
+  let count = 0;
+  while (count < 10000 && pred(count)) count += 1;
+  return count;
+}
+
+// Rows whose top is still on the canvas keep the original spacing. The next
+// row used to start below the canvas, where it could not be selected.
+const FALLBACK_LEGACY = countFallback((i) => fallbackOrigin(i).y < 1);
+const FALLBACK_FIT = countFallback((i) => fallbackOrigin(i).y + FALLBACK_H <= 1);
+
 export function fallbackRegion(index) {
   const i = Number.isInteger(index) && index >= 0 ? index : 0;
-  const row = Math.floor(i / 4);
-  const col = i % 4;
-  return {
-    x: 0.02 + col * 0.25,
-    y: 0.02 + row * 0.17,
-    w: 0.22,
-    h: 0.14,
+  const origin = fallbackOrigin(i);
+  if (i < FALLBACK_LEGACY || FALLBACK_FIT <= 0) {
+    return { x: origin.x, y: origin.y, w: FALLBACK_W, h: FALLBACK_H, nobbox: true };
+  }
+  const extra = i - FALLBACK_LEGACY;
+  const page = Math.floor(extra / FALLBACK_FIT);
+  const slot = extra % FALLBACK_FIT;
+  const slotOrigin = fallbackOrigin(slot);
+  // A small shift per lap keeps the wrapped region from covering the same
+  // pixels as the region already in that cell. Clamp so the shift stays inside.
+  const shift = 0.01 * ((page % 4) + 1);
+  return normalizeBoxCoords({
+    x: slotOrigin.x + shift,
+    y: slotOrigin.y + shift,
+    w: FALLBACK_W,
+    h: FALLBACK_H,
     nobbox: true,
-  };
+  });
 }
 
 /**

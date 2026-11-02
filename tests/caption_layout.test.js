@@ -98,6 +98,35 @@ describe("ideogram bbox import", () => {
     }
   });
 
+  it("keeps the original grid until a row starts past the canvas", () => {
+    // Six rows begin on the canvas. The seventh (index 24) used to start
+    // at y > 1, so those regions could not be selected or moved.
+    for (let i = 0; i < 24; i++) {
+      const row = Math.floor(i / 4);
+      const col = i % 4;
+      const box = fallbackRegion(i);
+      near(box.x, 0.02 + col * 0.25);
+      near(box.y, 0.02 + row * 0.17);
+      near(box.w, 0.22);
+      near(box.h, 0.14);
+      assert.equal(box.nobbox, true);
+    }
+    const buried = fallbackRegion(24);
+    assert.ok(buried.y < 1, "later fallback starts off the canvas");
+    assert.ok(buried.x >= 0 && buried.y >= 0);
+    assert.ok(buried.x + buried.w <= 1 + 1e-9);
+    assert.ok(buried.y + buried.h <= 1 + 1e-9);
+    assert.equal(buried.nobbox, true);
+    assert.ok(Math.abs(buried.x - fallbackRegion(0).x) > 1e-6 || Math.abs(buried.y - fallbackRegion(0).y) > 1e-6);
+    for (let i = 24; i < 48; i++) {
+      const box = fallbackRegion(i);
+      assert.ok(box.x >= -1e-9 && box.y >= -1e-9, `index ${i} origin`);
+      assert.ok(box.x + box.w <= 1 + 1e-9, `index ${i} x`);
+      assert.ok(box.y + box.h <= 1 + 1e-9, `index ${i} y`);
+      assert.equal(box.nobbox, true);
+    }
+  });
+
   it("rejects NaN coordinates when restoring saved regions", () => {
     assert.equal(regionCoordsFinite({ x: 0.1, y: 0.2, w: 0.3, h: 0.4 }), true);
     assert.equal(regionCoordsFinite({ x: NaN, y: 0.2, w: 0.3, h: 0.4 }), false);
