@@ -14,7 +14,7 @@ import {
   snapLayoutDim,
   indexesAfterClearingSelection,
   selectionAfterRemovingBox,
-  nextPasteNudge, offsetAddedRegions, pasteRegions,
+  nextPasteNudge, nudgeForAddedRegions, offsetAddedRegions, pasteRegions,
   regionLabel,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
   swatchHex, topRegionIndex,
@@ -1932,7 +1932,9 @@ app.registerExtension({
         if (replace) clearAll();
         const startIdx = node._boxes.length;
         const incoming = (state.boxes || []).map(cloneBox);
-        const placed = replace ? incoming : offsetAddedRegions(incoming);
+        const placed = replace
+          ? incoming
+          : offsetAddedRegions(incoming, nudgeForAddedRegions(node._boxes, incoming));
         const newIdxs = [];
         for (const nb of placed) {
           node._boxes.push(nb);

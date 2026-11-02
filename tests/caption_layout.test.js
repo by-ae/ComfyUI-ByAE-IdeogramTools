@@ -14,6 +14,7 @@ import {
   selectionAfterRemovingBox,
   snapLayoutDim,
   offsetAddedRegions,
+  nudgeForAddedRegions,
   nextPasteNudge,
   parseCaptionText,
   pasteRegions,
@@ -335,6 +336,37 @@ describe("added scenes", () => {
     assert.ok(placed[0].x + placed[0].w <= 1 + 1e-9);
     assert.ok(placed[0].y + placed[0].h <= 1 + 1e-9);
     near(placed[0].w, 0.05);
+  });
+
+  it("keeps the first offset when that copy is not already on the canvas", () => {
+    const saved = [{ x: 0.1, y: 0.2, w: 0.2, h: 0.2, desc: "a" }];
+    assert.equal(nudgeForAddedRegions([], saved), 0.05);
+    assert.equal(nudgeForAddedRegions(saved, saved), 0.05);
+  });
+
+  it("steps the offset when another add would cover the previous copy", () => {
+    const saved = [
+      { x: 0.1, y: 0.2, w: 0.04, h: 0.04, desc: "a" },
+      { x: 0.5, y: 0.5, w: 0.04, h: 0.04, desc: "b" },
+    ];
+    const first = offsetAddedRegions(saved, 0.05);
+    const nudge = nudgeForAddedRegions(first, saved);
+    assert.equal(nudge, 0.1);
+    const second = offsetAddedRegions(saved, nudge);
+    near(second[0].x - first[0].x, 0.05);
+    near(second[1].y - first[1].y, 0.05);
+    const overlapX = first[0].x < second[0].x + second[0].w && first[0].x + first[0].w > second[0].x;
+    const overlapY = first[0].y < second[0].y + second[0].h && first[0].y + first[0].h > second[0].y;
+    assert.equal(overlapX && overlapY, false);
+  });
+
+  it("does not step when only one region of the scene already matches", () => {
+    const saved = [
+      { x: 0.1, y: 0.1, w: 0.1, h: 0.1 },
+      { x: 0.5, y: 0.5, w: 0.1, h: 0.1 },
+    ];
+    const existing = offsetAddedRegions([saved[0]], 0.05);
+    assert.equal(nudgeForAddedRegions(existing, saved), 0.05);
   });
 });
 

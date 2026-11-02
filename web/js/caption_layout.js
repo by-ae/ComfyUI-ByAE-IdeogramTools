@@ -311,6 +311,29 @@ export function offsetAddedRegions(boxes, nudge = 0.05) {
   }));
 }
 
+function regionRectKey(b) {
+  const r = (n) => Math.round(n * 1e6) / 1e6;
+  return `${r(b.x)},${r(b.y)},${r(b.w)},${r(b.h)}`;
+}
+
+/**
+ * Offset for an additive scene load. The first copy uses `step`. A later load
+ * of the same scene steps further so the new regions are not hidden under the
+ * previous copy. A partial overlap is left alone.
+ */
+export function nudgeForAddedRegions(existing, incoming, step = 0.05) {
+  const base = typeof step === "number" && Number.isFinite(step) && step > 0 ? step : 0.05;
+  const have = new Set((existing || []).filter(regionCoordsFinite).map(regionRectKey));
+  let nudge = base;
+  for (let n = 1; n <= 16; n++) {
+    nudge = base * n;
+    const placed = offsetAddedRegions(incoming, nudge).filter(regionCoordsFinite);
+    const hidden = placed.length > 0 && placed.every((b) => have.has(regionRectKey(b)));
+    if (!hidden) return nudge;
+  }
+  return nudge;
+}
+
 /** Each Ctrl+V moves this far from the copied region. The next paste adds another step. */
 export const PASTE_NUDGE = 0.03;
 
