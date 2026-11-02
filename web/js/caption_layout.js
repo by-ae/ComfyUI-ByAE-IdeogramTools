@@ -255,8 +255,14 @@ export function normalizeHex(color) {
 }
 
 export function cleanPalette(colors, limit) {
+  // A dict of colors is what the prompt node accepts. Anything that is not a
+  // list or a plain object is dropped. Iterating a number used to throw.
+  let list;
+  if (Array.isArray(colors)) list = colors;
+  else if (colors && typeof colors === "object") list = Object.values(colors);
+  else return [];
   const out = [];
-  for (const color of colors || []) {
+  for (const color of list) {
     const hex = normalizeHex(color);
     if (!hex) continue;
     out.push(hex);
@@ -300,6 +306,62 @@ function normalizeBoxCoords(b) {
   w = Math.min(w, 1 - x);
   h = Math.min(h, 1 - y);
   return { ...b, x, y, w: Math.max(0, w), h: Math.max(0, h) };
+}
+
+const SCENE_BOX_KEYS = ["x", "y", "w", "h", "desc", "text", "palette", "type", "nobbox", "storeRef"];
+
+function sceneCoord(value) {
+  const n = finiteCoord(value);
+  return n == null ? 0 : n;
+}
+
+function sceneRegion(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (!SCENE_BOX_KEYS.some((key) => Object.prototype.hasOwnProperty.call(raw, key))) return null;
+  const region = normalizeBoxCoords({
+    x: sceneCoord(raw.x),
+    y: sceneCoord(raw.y),
+    w: sceneCoord(raw.w),
+    h: sceneCoord(raw.h),
+    type: typeof raw.type === "string" && raw.type ? raw.type : "obj",
+    text: captionText(raw.text),
+    desc: captionText(raw.desc),
+    palette: cleanPalette(raw.palette, 5),
+  });
+  if (raw.nobbox) region.nobbox = true;
+  const ref = raw.storeRef;
+  if (ref && typeof ref === "object" && !Array.isArray(ref)) {
+    const type = ref.type === "object" || ref.type === "character" ? ref.type : null;
+    const name = captionText(ref.name);
+    if (type && name) region.storeRef = { type, name };
+  }
+  return region;
+}
+
+/**
+ * Regions and fields from a saved scene, or null when the value is not one.
+ * Callers must check null before clearing the canvas. A list of unusable
+ * regions is null so replace mode does not wipe the editor for junk data.
+ */
+export function sceneFromStore(state) {
+  if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+  if (!("boxes" in state) && !("widgets" in state) && !("stylePalette" in state)) return null;
+  if ("boxes" in state && !Array.isArray(state.boxes)) return null;
+  const rawBoxes = Array.isArray(state.boxes) ? state.boxes : [];
+  const boxes = [];
+  for (const raw of rawBoxes) {
+    const region = sceneRegion(raw);
+    if (region) boxes.push(region);
+  }
+  if (rawBoxes.length > 0 && boxes.length === 0) return null;
+  const widgets = state.widgets && typeof state.widgets === "object" && !Array.isArray(state.widgets)
+    ? state.widgets
+    : {};
+  return {
+    boxes,
+    stylePalette: cleanPalette(state.stylePalette, 16),
+    widgets,
+  };
 }
 
 /** Move every region by the same nudge, then keep it inside the canvas. */

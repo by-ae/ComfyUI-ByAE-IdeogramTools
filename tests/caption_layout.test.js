@@ -13,6 +13,7 @@ import {
   indexesAfterClearingSelection,
   selectionAfterRemovingBox,
   snapLayoutDim,
+  sceneFromStore,
   offsetAddedRegions,
   nudgeForAddedRegions,
   nextPasteNudge,
@@ -305,6 +306,15 @@ describe("color palettes", () => {
     assert.equal(cleanPalette(colors, 16).length, 16);
     assert.deepEqual(cleanPalette(colors, 2), ["#000000", "#000001"]);
   });
+
+  it("reads a palette object and ignores values that are not a color list", () => {
+    // The prompt node accepts a dict of colors. A number used to throw here
+    // while the scene was already cleared.
+    assert.deepEqual(cleanPalette({ c2: "#00ff00", c1: "#fff" }), ["#00FF00", "#FFFFFF"]);
+    assert.deepEqual(cleanPalette(5), []);
+    assert.deepEqual(cleanPalette("#fff"), []);
+    assert.deepEqual(cleanPalette(true), []);
+  });
 });
 
 function near(actual, expected) {
@@ -367,6 +377,72 @@ describe("added scenes", () => {
     ];
     const existing = offsetAddedRegions([saved[0]], 0.05);
     assert.equal(nudgeForAddedRegions(existing, saved), 0.05);
+  });
+});
+
+describe("saved scenes", () => {
+  it("keeps a normal scene and does not share its palette array", () => {
+    const src = {
+      boxes: [{
+        x: 0.1, y: 0.2, w: 0.3, h: 0.4,
+        type: "text", text: "Hi", desc: "d",
+        palette: ["#fff"],
+        nobbox: true,
+        storeRef: { type: "character", name: "Ada" },
+      }],
+      stylePalette: ["#abc"],
+      widgets: { background: "room", style: "photo", photo: "35mm" },
+    };
+    const scene = sceneFromStore(src);
+    near(scene.boxes[0].x, 0.1);
+    near(scene.boxes[0].y, 0.2);
+    near(scene.boxes[0].w, 0.3);
+    near(scene.boxes[0].h, 0.4);
+    assert.equal(scene.boxes[0].type, "text");
+    assert.equal(scene.boxes[0].text, "Hi");
+    assert.equal(scene.boxes[0].nobbox, true);
+    assert.deepEqual(scene.boxes[0].palette, ["#FFFFFF"]);
+    assert.deepEqual(scene.boxes[0].storeRef, { type: "character", name: "Ada" });
+    assert.deepEqual(scene.stylePalette, ["#AABBCC"]);
+    assert.equal(scene.widgets.background, "room");
+    scene.boxes[0].palette.push("#000000");
+    assert.deepEqual(src.boxes[0].palette, ["#fff"]);
+  });
+
+  it("skips unusable regions and still reads the rest", () => {
+    const scene = sceneFromStore({
+      boxes: [null, { x: "0.2", y: "0.3", w: "0.4", h: "0.1", desc: "ok", palette: 5 }, "x", {}],
+      stylePalette: { a: "#abc" },
+      widgets: { background: "room" },
+    });
+    assert.equal(scene.boxes.length, 1);
+    assert.equal(scene.boxes[0].desc, "ok");
+    near(scene.boxes[0].x, 0.2);
+    near(scene.boxes[0].w, 0.4);
+    assert.deepEqual(scene.boxes[0].palette, []);
+    assert.deepEqual(scene.stylePalette, ["#AABBCC"]);
+  });
+
+  it("turns a negative width into a region that stays on the canvas", () => {
+    const scene = sceneFromStore({
+      boxes: [{ x: 0.5, y: 0.4, w: -0.2, h: 0.2, desc: "flip" }],
+    });
+    near(scene.boxes[0].x, 0.3);
+    near(scene.boxes[0].y, 0.4);
+    near(scene.boxes[0].w, 0.2);
+    near(scene.boxes[0].h, 0.2);
+  });
+
+  it("rejects a value that is not a scene so replace cannot clear the canvas", () => {
+    assert.equal(sceneFromStore(null), null);
+    assert.equal(sceneFromStore([]), null);
+    assert.equal(sceneFromStore({ desc: "character", palette: ["#FFFFFF"] }), null);
+    assert.equal(sceneFromStore({ boxes: "nope" }), null);
+    assert.equal(sceneFromStore({ boxes: null }), null);
+    assert.equal(sceneFromStore({ boxes: [null, "x", {}] }), null);
+    const empty = sceneFromStore({ boxes: [], widgets: {}, stylePalette: [] });
+    assert.deepEqual(empty.boxes, []);
+    assert.deepEqual(empty.stylePalette, []);
   });
 });
 

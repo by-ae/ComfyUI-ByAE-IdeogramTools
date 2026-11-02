@@ -15,6 +15,7 @@ import {
   indexesAfterClearingSelection,
   selectionAfterRemovingBox,
   nextPasteNudge, nudgeForAddedRegions, offsetAddedRegions, pasteRegions,
+  sceneFromStore,
   regionLabel,
   rectToIdeogramBbox, regionCoordsFinite, remapImportedRegions, staggerLoadedRegion,
   swatchHex, topRegionIndex,
@@ -1929,9 +1930,17 @@ app.registerExtension({
       }
 
       function applySceneState(state, replace) {
+        // Read the saved scene before clearAll. Replace used to wipe the
+        // canvas first, then throw when a box or its palette could not be read.
+        const prepared = sceneFromStore(state);
+        if (!prepared) {
+          console.warn("ByAE Ideogram: saved scene was not a scene object");
+          alert("That saved scene could not be read. The canvas was left unchanged.");
+          return;
+        }
         if (replace) clearAll();
         const startIdx = node._boxes.length;
-        const incoming = (state.boxes || []).map(cloneBox);
+        const incoming = prepared.boxes;
         const placed = replace
           ? incoming
           : offsetAddedRegions(incoming, nudgeForAddedRegions(node._boxes, incoming));
@@ -1941,16 +1950,17 @@ app.registerExtension({
           newIdxs.push(startIdx + newIdxs.length);
         }
         if (replace) {
-          setWidgetVal("high_level_description", state.widgets?.high_level_description || "");
-          setWidgetVal("background", state.widgets?.background || "");
-          setWidgetVal("aesthetics", state.widgets?.aesthetics || "");
-          setWidgetVal("lighting", state.widgets?.lighting || "");
-          setWidgetVal("medium", state.widgets?.medium || "");
-          const kind = state.widgets?.style || "none";
+          const widgets = prepared.widgets || {};
+          setWidgetVal("high_level_description", widgets.high_level_description || "");
+          setWidgetVal("background", widgets.background || "");
+          setWidgetVal("aesthetics", widgets.aesthetics || "");
+          setWidgetVal("lighting", widgets.lighting || "");
+          setWidgetVal("medium", widgets.medium || "");
+          const kind = widgets.style || "none";
           setWidgetVal("style", kind);
-          if (kind === "photo") setWidgetVal("style.photo", state.widgets?.photo || "");
-          else if (kind === "art_style") setWidgetVal("style.art_style", state.widgets?.art_style || "");
-          node._stylePalette = cleanPalette(state.stylePalette, MAX_STYLE_COLORS);
+          if (kind === "photo") setWidgetVal("style.photo", widgets.photo || "");
+          else if (kind === "art_style") setWidgetVal("style.art_style", widgets.art_style || "");
+          node._stylePalette = prepared.stylePalette;
           rebuildStylePalette();
         }
         setSelection(newIdxs.length ? newIdxs : (node._boxes.length ? [0] : []));
