@@ -58,17 +58,54 @@ export function rectToIdeogramBbox(box) {
   return [ymin, xmin, ymax, xmax];
 }
 
+const FALLBACK_COLS = 4;
+const FALLBACK_W = 0.22;
+const FALLBACK_H = 0.14;
+const FALLBACK_X0 = 0.02;
+const FALLBACK_Y0 = 0.02;
+const FALLBACK_XSTEP = 0.25;
+const FALLBACK_YSTEP = 0.17;
+
+function fallbackOrigin(index) {
+  const row = Math.floor(index / FALLBACK_COLS);
+  const col = index % FALLBACK_COLS;
+  return {
+    x: FALLBACK_X0 + col * FALLBACK_XSTEP,
+    y: FALLBACK_Y0 + row * FALLBACK_YSTEP,
+  };
+}
+
+function countFallback(pred) {
+  let count = 0;
+  while (count < 10000 && pred(count)) count += 1;
+  return count;
+}
+
+// Rows whose top is still on the canvas keep the original spacing. The next
+// row used to start below the canvas, where it could not be selected.
+const FALLBACK_LEGACY = countFallback((i) => fallbackOrigin(i).y < 1);
+const FALLBACK_FIT = countFallback((i) => fallbackOrigin(i).y + FALLBACK_H <= 1);
+
 export function fallbackRegion(index) {
   const i = Number.isInteger(index) && index >= 0 ? index : 0;
-  const row = Math.floor(i / 4);
-  const col = i % 4;
-  return {
-    x: 0.02 + col * 0.25,
-    y: 0.02 + row * 0.17,
-    w: 0.22,
-    h: 0.14,
+  const origin = fallbackOrigin(i);
+  if (i < FALLBACK_LEGACY || FALLBACK_FIT <= 0) {
+    return { x: origin.x, y: origin.y, w: FALLBACK_W, h: FALLBACK_H, nobbox: true };
+  }
+  const extra = i - FALLBACK_LEGACY;
+  const page = Math.floor(extra / FALLBACK_FIT);
+  const slot = extra % FALLBACK_FIT;
+  const slotOrigin = fallbackOrigin(slot);
+  // A small shift per lap keeps the wrapped region from covering the same
+  // pixels as the region already in that cell. Clamp so the shift stays inside.
+  const shift = 0.01 * ((page % 4) + 1);
+  return normalizeBoxCoords({
+    x: slotOrigin.x + shift,
+    y: slotOrigin.y + shift,
+    w: FALLBACK_W,
+    h: FALLBACK_H,
     nobbox: true,
-  };
+  });
 }
 
 /**
@@ -218,8 +255,14 @@ export function normalizeHex(color) {
 }
 
 export function cleanPalette(colors, limit) {
+  // A dict of colors is what the prompt node accepts. Anything that is not a
+  // list or a plain object is dropped. Iterating a number used to throw.
+  let list;
+  if (Array.isArray(colors)) list = colors;
+  else if (colors && typeof colors === "object") list = Object.values(colors);
+  else return [];
   const out = [];
-  for (const color of colors || []) {
+  for (const color of list) {
     const hex = normalizeHex(color);
     if (!hex) continue;
     out.push(hex);
@@ -265,6 +308,62 @@ function normalizeBoxCoords(b) {
   return { ...b, x, y, w: Math.max(0, w), h: Math.max(0, h) };
 }
 
+const SCENE_BOX_KEYS = ["x", "y", "w", "h", "desc", "text", "palette", "type", "nobbox", "storeRef"];
+
+function sceneCoord(value) {
+  const n = finiteCoord(value);
+  return n == null ? 0 : n;
+}
+
+function sceneRegion(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (!SCENE_BOX_KEYS.some((key) => Object.prototype.hasOwnProperty.call(raw, key))) return null;
+  const region = normalizeBoxCoords({
+    x: sceneCoord(raw.x),
+    y: sceneCoord(raw.y),
+    w: sceneCoord(raw.w),
+    h: sceneCoord(raw.h),
+    type: typeof raw.type === "string" && raw.type ? raw.type : "obj",
+    text: captionText(raw.text),
+    desc: captionText(raw.desc),
+    palette: cleanPalette(raw.palette, 5),
+  });
+  if (raw.nobbox) region.nobbox = true;
+  const ref = raw.storeRef;
+  if (ref && typeof ref === "object" && !Array.isArray(ref)) {
+    const type = ref.type === "object" || ref.type === "character" ? ref.type : null;
+    const name = captionText(ref.name);
+    if (type && name) region.storeRef = { type, name };
+  }
+  return region;
+}
+
+/**
+ * Regions and fields from a saved scene, or null when the value is not one.
+ * Callers must check null before clearing the canvas. A list of unusable
+ * regions is null so replace mode does not wipe the editor for junk data.
+ */
+export function sceneFromStore(state) {
+  if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+  if (!("boxes" in state) && !("widgets" in state) && !("stylePalette" in state)) return null;
+  if ("boxes" in state && !Array.isArray(state.boxes)) return null;
+  const rawBoxes = Array.isArray(state.boxes) ? state.boxes : [];
+  const boxes = [];
+  for (const raw of rawBoxes) {
+    const region = sceneRegion(raw);
+    if (region) boxes.push(region);
+  }
+  if (rawBoxes.length > 0 && boxes.length === 0) return null;
+  const widgets = state.widgets && typeof state.widgets === "object" && !Array.isArray(state.widgets)
+    ? state.widgets
+    : {};
+  return {
+    boxes,
+    stylePalette: cleanPalette(state.stylePalette, 16),
+    widgets,
+  };
+}
+
 /** Move every region by the same nudge, then keep it inside the canvas. */
 export function offsetAddedRegions(boxes, nudge = 0.05) {
   return (boxes || []).map((b) => normalizeBoxCoords({
@@ -272,6 +371,29 @@ export function offsetAddedRegions(boxes, nudge = 0.05) {
     x: (typeof b.x === "number" && Number.isFinite(b.x) ? b.x : 0) + nudge,
     y: (typeof b.y === "number" && Number.isFinite(b.y) ? b.y : 0) + nudge,
   }));
+}
+
+function regionRectKey(b) {
+  const r = (n) => Math.round(n * 1e6) / 1e6;
+  return `${r(b.x)},${r(b.y)},${r(b.w)},${r(b.h)}`;
+}
+
+/**
+ * Offset for an additive scene load. The first copy uses `step`. A later load
+ * of the same scene steps further so the new regions are not hidden under the
+ * previous copy. A partial overlap is left alone.
+ */
+export function nudgeForAddedRegions(existing, incoming, step = 0.05) {
+  const base = typeof step === "number" && Number.isFinite(step) && step > 0 ? step : 0.05;
+  const have = new Set((existing || []).filter(regionCoordsFinite).map(regionRectKey));
+  let nudge = base;
+  for (let n = 1; n <= 16; n++) {
+    nudge = base * n;
+    const placed = offsetAddedRegions(incoming, nudge).filter(regionCoordsFinite);
+    const hidden = placed.length > 0 && placed.every((b) => have.has(regionRectKey(b)));
+    if (!hidden) return nudge;
+  }
+  return nudge;
 }
 
 /** Each Ctrl+V moves this far from the copied region. The next paste adds another step. */

@@ -746,17 +746,65 @@ def _ideogram_bbox_to_rect(bbox):
     }
 
 
+# Same grid as fallbackRegion in web/js/caption_layout.js. Rows whose top is
+# still on the canvas keep that spacing. The next row used to start below the
+# canvas, where the editor could not select it.
+_FALLBACK_COLS = 4
+_FALLBACK_W = 0.22
+_FALLBACK_H = 0.14
+_FALLBACK_X0 = 0.02
+_FALLBACK_Y0 = 0.02
+_FALLBACK_XSTEP = 0.25
+_FALLBACK_YSTEP = 0.17
+
+
+def _fallback_origin(index):
+    row, col = divmod(index, _FALLBACK_COLS)
+    return (
+        _FALLBACK_X0 + col * _FALLBACK_XSTEP,
+        _FALLBACK_Y0 + row * _FALLBACK_YSTEP,
+    )
+
+
+def _count_fallback(pred):
+    count = 0
+    while count < 10000 and pred(count):
+        count += 1
+    return count
+
+
+_FALLBACK_LEGACY = _count_fallback(lambda i: _fallback_origin(i)[1] < 1)
+_FALLBACK_FIT = _count_fallback(lambda i: _fallback_origin(i)[1] + _FALLBACK_H <= 1)
+
+
+def _fit_unit_box(x, y, w, h):
+    """Clamp one region into the unit square. Matches the editor normalizer."""
+    if w < 0:
+        x += w
+        w = -w
+    if h < 0:
+        y += h
+        h = -h
+    x = 0.0 if x <= 0 else 1.0 if x >= 1 else x
+    y = 0.0 if y <= 0 else 1.0 if y >= 1 else y
+    w = min(max(0.0, w), 1.0 - x)
+    h = min(max(0.0, h), 1.0 - y)
+    return x, y, w, h
+
+
 def _fallback_region(index):
     # Rows of 4. Same spacing as the editor so pasted captions do not overlap.
     safe_index = index if isinstance(index, int) and index >= 0 else 0
-    row, col = divmod(safe_index, 4)
-    return {
-        "x": 0.02 + col * 0.25,
-        "y": 0.02 + row * 0.17,
-        "w": 0.22,
-        "h": 0.14,
-        "nobbox": True,
-    }
+    if safe_index < _FALLBACK_LEGACY or _FALLBACK_FIT <= 0:
+        x, y = _fallback_origin(safe_index)
+        return {"x": x, "y": y, "w": _FALLBACK_W, "h": _FALLBACK_H, "nobbox": True}
+    extra = safe_index - _FALLBACK_LEGACY
+    page, slot = divmod(extra, _FALLBACK_FIT)
+    slot_x, slot_y = _fallback_origin(slot)
+    # A small shift per lap keeps the wrapped region off the one already there.
+    shift = 0.01 * ((page % 4) + 1)
+    x, y, w, h = _fit_unit_box(slot_x + shift, slot_y + shift, _FALLBACK_W, _FALLBACK_H)
+    return {"x": x, "y": y, "w": w, "h": h, "nobbox": True}
 
 
 def _caption_to_boxes(caption):

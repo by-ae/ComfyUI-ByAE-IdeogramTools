@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 # conftest.py handles mocking and path setup
 from nodes.ideogram4_nodes import (
     sanitize_bg_guid, _norm_bbox, _palette, _hex_rgb, _dumps, _parse_json_list,
-    _caption_to_boxes, _coerce_layout_int, _coerce_opacity,
+    _caption_to_boxes, _coerce_layout_int, _coerce_opacity, _fallback_region,
     _elements_from_boxes, _preview_edges, _render_preview, ImageDraw,
     save_bg_image_to_temp, _uint8_frame_kind, _rgb_image_from_uint8, Image,
     _parse_import_caption, _caption_field, _resolve_style, _editor_caption,
@@ -404,6 +404,28 @@ class TestPromptHelpers(unittest.TestCase):
     def test_caption_to_boxes_empty(self):
         result = _caption_to_boxes({})
         self.assertEqual(result, [])
+
+    def test_fallback_regions_past_the_grid_stay_on_the_canvas(self):
+        # The editor uses the same grid. Rows that still start on the canvas
+        # stay put; the next row used to begin below the canvas.
+        for i in range(24):
+            row, col = divmod(i, 4)
+            box = _fallback_region(i)
+            self.assertTrue(box["nobbox"])
+            self.assertAlmostEqual(box["x"], 0.02 + col * 0.25)
+            self.assertAlmostEqual(box["y"], 0.02 + row * 0.17)
+            self.assertAlmostEqual(box["w"], 0.22)
+            self.assertAlmostEqual(box["h"], 0.14)
+        self.assertGreaterEqual(0.02 + 6 * 0.17, 1)
+        for i in range(24, 48):
+            box = _fallback_region(i)
+            self.assertTrue(box["nobbox"])
+            self.assertGreaterEqual(box["x"], 0)
+            self.assertGreaterEqual(box["y"], 0)
+            self.assertLessEqual(box["x"] + box["w"], 1 + 1e-9)
+            self.assertLessEqual(box["y"] + box["h"], 1 + 1e-9)
+        self.assertLess(_fallback_region(24)["y"], 1)
+        self.assertNotAlmostEqual(_fallback_region(24)["y"], 0.02 + 6 * 0.17)
 
     def test_coerce_layout_int_valid(self):
         self.assertEqual(_coerce_layout_int(512), 512)
