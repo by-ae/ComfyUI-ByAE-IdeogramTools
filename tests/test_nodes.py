@@ -432,11 +432,47 @@ class TestPromptHelpers(unittest.TestCase):
         self.assertEqual(_coerce_layout_int("1024"), 1024)
         self.assertEqual(_coerce_layout_int(2048.7), 2048)
 
+    def test_coerce_layout_int_matches_the_editor_grid(self):
+        # The size fields snap to a multiple of 8 inside 64-16384. Halves go
+        # toward +inf, the same rule as the editor. Python round() would
+        # send 68 to 64.
+        self.assertEqual(_coerce_layout_int(1001), 1000)
+        self.assertEqual(_coerce_layout_int(1004), 1008)
+        self.assertEqual(_coerce_layout_int(67), 64)
+        self.assertEqual(_coerce_layout_int(68), 72)
+        self.assertEqual(_coerce_layout_int(70), 72)
+        self.assertEqual(_coerce_layout_int(50), 64)
+        self.assertEqual(_coerce_layout_int(16380), 16384)
+        self.assertEqual(_coerce_layout_int(20000), 16384)
+        self.assertEqual(_coerce_layout_int("1080"), 1080)
+        self.assertEqual(_coerce_layout_int(" 1920 "), 1920)
+
     def test_coerce_layout_int_invalid(self):
         self.assertEqual(_coerce_layout_int(0), 1024)
         self.assertEqual(_coerce_layout_int(-100), 1024)
         self.assertEqual(_coerce_layout_int("not a number"), 1024)
         self.assertEqual(_coerce_layout_int(None), 1024)
+        # True is an int, so int(True) used to become a 1px canvas.
+        self.assertEqual(_coerce_layout_int(True), 1024)
+        self.assertEqual(_coerce_layout_int(False), 1024)
+        self.assertEqual(_coerce_layout_int(float("inf")), 1024)
+        self.assertEqual(_coerce_layout_int(float("nan")), 1024)
+
+    def test_execute_outputs_use_the_snapped_size(self):
+        io.NodeOutput.reset_mock()
+        with self.assertNoLogs("byae.ideogram.prompt", level="WARNING"):
+            Ideogram4PromptBuilderKJEnhancedByAE.execute(
+                1001, 70, "room", {"style": "none"},
+            )
+        width, height = io.NodeOutput.call_args.args[2:4]
+        self.assertEqual((width, height), (1000, 72))
+
+        io.NodeOutput.reset_mock()
+        Ideogram4PromptBuilderKJEnhancedByAE.execute(
+            float("inf"), float("nan"), "room", {"style": "none"},
+        )
+        width, height = io.NodeOutput.call_args.args[2:4]
+        self.assertEqual((width, height), (1024, 1024))
 
     def test_coerce_opacity_valid(self):
         self.assertEqual(_coerce_opacity(0.5), 0.5)

@@ -151,11 +151,25 @@ def _wrap(draw, text, font, max_w):
 
 
 def _coerce_layout_int(value, default=1024):
+    """Width or height on the same grid as the editor size fields.
+
+    Round, clamp to 64-16384, then round to a multiple of 8. Ties on a half
+    step go toward +inf, matching snapLayoutDim. A boolean is not a size:
+    True is an int, and int(True) used to become a 1px canvas. A non-finite
+    value used to raise OverflowError out of int().
+    """
+    if isinstance(value, bool) or value is None:
+        return default
     try:
-        n = int(value)
-        return n if n > 0 else default
+        number = float(value)
     except (TypeError, ValueError):
         return default
+    if number != number or number in (float("inf"), float("-inf")) or number <= 0:
+        return default
+    rounded = _round_half_up(number)
+    clamped = max(64, min(16384, rounded))
+    snapped = _round_half_up(clamped / 8.0) * 8
+    return max(64, min(16384, snapped))
 
 
 def _coerce_opacity(value, default=0.5):

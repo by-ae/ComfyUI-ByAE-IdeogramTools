@@ -99,7 +99,7 @@ Node names and internal IDs are stable. If a workflow breaks, check:
 
 ### Canvas size
 
-The size fields accept 64 to 16384. They snap to a multiple of 8, the fields show that snapped number, and those numbers are the width and height outputs.
+The size fields accept 64 to 16384. They snap to a multiple of 8, the fields show that snapped number, and those numbers are the width and height outputs. The node applies that same snap to the width and height it receives, including a value sent through the API.
 
 The open Ideogram 4 model is stricter: both sides must be multiples of 16, from 256 to 2048, and the aspect ratio cannot exceed 6:1. That rule is in the model's [inference reference](https://github.com/ideogram-oss/ideogram4/blob/main/docs/inference.md). The editor shows it next to the size fields when the current size does not qualify, and the note does not change the numbers. The spinner moves in steps of 16.
 
