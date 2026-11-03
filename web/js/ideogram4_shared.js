@@ -85,9 +85,58 @@ export async function deleteStoreEntry(bucket, name) {
   }
 }
 
+function graphNodes(graph) {
+  if (!graph || typeof graph !== "object") return [];
+  if (Array.isArray(graph._nodes)) return graph._nodes;
+  if (Array.isArray(graph.nodes)) return graph.nodes;
+  return [];
+}
+
+function nestedGraph(node) {
+  if (typeof node?.isSubgraphNode !== "function" || !node.isSubgraphNode()) return null;
+  const inner = node.subgraph;
+  if (!inner || typeof inner !== "object") return null;
+  return inner;
+}
+
+/**
+ * Builders to patch when the workflow is queued.
+ * ComfyUI's execution id is the subgraph instance ids and the node id joined
+ * with ":". A root node is just its id. The same subgraph definition can sit
+ * in more than one instance, so each instance keeps its own path.
+ */
+export function collectBuilderPromptTargets(graph) {
+  const targets = [];
+  const walk = (current, path, stack) => {
+    if (!current || stack.has(current) || path.length > 32) return;
+    stack.add(current);
+    for (const node of graphNodes(current)) {
+      if (node && nodeClassName(node) === BUILDER_CLASS && node.id != null) {
+        targets.push({ node, executionId: [...path, node.id].join(":") });
+      }
+      const inner = nestedGraph(node);
+      if (inner && node.id != null) walk(inner, [...path, node.id], stack);
+    }
+    stack.delete(current);
+  };
+  if (graph) walk(graph, [], new Set());
+  return targets;
+}
+
 export function findBuildersOnGraph(graph) {
-  if (!graph?._nodes) return [];
-  return graph._nodes.filter((n) => nodeClassName(n) === BUILDER_CLASS);
+  return collectBuilderPromptTargets(graph).map((entry) => entry.node);
+}
+
+export function applyBuilderPromptPatches(output, targets) {
+  if (!output || typeof output !== "object") return output;
+  for (const { node, executionId } of targets || []) {
+    const patch = node?.byaeGetPromptInputs?.();
+    if (!patch) continue;
+    const slot = output[executionId];
+    if (!slot) continue;
+    slot.inputs = { ...(slot.inputs || {}), ...patch };
+  }
+  return output;
 }
 
 let _bgPushListenerInstalled = false;
@@ -119,17 +168,11 @@ export function installBuilderQueueHooks() {
   const orig = app.graphToPrompt?.bind(app);
   if (!orig) return;
   app.graphToPrompt = async function (...args) {
-    const builders = findBuildersOnGraph(app.graph);
-    for (const n of builders) n.byaePersistState?.();
+    const targets = collectBuilderPromptTargets(app.graph);
+    for (const { node } of targets) node.byaePersistState?.();
     const res = await orig(...args);
     if (!res?.output) return res;
-    for (const n of builders) {
-      const patch = n.byaeGetPromptInputs?.();
-      if (!patch) continue;
-      const key = String(n.id);
-      if (!res.output[key]) continue;
-      res.output[key].inputs = { ...(res.output[key].inputs || {}), ...patch };
-    }
+    applyBuilderPromptPatches(res.output, targets);
     return res;
   };
 }
