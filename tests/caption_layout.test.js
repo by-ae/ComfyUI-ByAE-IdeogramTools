@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   backgroundPlateShown,
+  backgroundUpdateFromStat,
   captionText,
   cleanPalette,
   elementToRegion,
@@ -275,6 +276,30 @@ describe("background image plate", () => {
     assert.equal(backgroundPlateShown("/view?filename=bg.png", 0), false);
     assert.equal(backgroundPlateShown("", 0.5), false);
     assert.equal(backgroundPlateShown(null, 0.5), false);
+  });
+});
+
+describe("background file check", () => {
+  const url = "/view?filename=byae_ideogram_bg_abc.png&type=temp&subfolder=";
+
+  it("applies a newer file and cache-busts the view url", () => {
+    const update = backgroundUpdateFromStat(10, { exists: true, mtime: 22.5, url });
+    assert.deepEqual(update, { mtime: 22.5, displayUrl: `${url}&t=22.5` });
+  });
+
+  it("accepts a push that does not say exists", () => {
+    const update = backgroundUpdateFromStat(0, { mtime: 4, url });
+    assert.equal(update.displayUrl, `${url}&t=4`);
+  });
+
+  it("ignores a missing file, an older mtime, and a stat with no url", () => {
+    assert.equal(backgroundUpdateFromStat(0, { exists: false, mtime: 9, url }), null);
+    assert.equal(backgroundUpdateFromStat(9, { exists: true, mtime: 9, url }), null);
+    assert.equal(backgroundUpdateFromStat(9, { exists: true, mtime: 8, url }), null);
+    assert.equal(backgroundUpdateFromStat(0, { exists: true, mtime: 9 }), null);
+    assert.equal(backgroundUpdateFromStat(0, null), null);
+    assert.equal(backgroundUpdateFromStat(0, { exists: true, mtime: Number.NaN, url }), null);
+    assert.equal(backgroundUpdateFromStat(Number.NaN, { mtime: 0, url }), null);
   });
 });
 

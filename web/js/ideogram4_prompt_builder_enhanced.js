@@ -9,6 +9,8 @@ import {
 } from "./ideogram4_shared.js";
 import {
   backgroundPlateShown,
+  backgroundUpdateFromStat,
+  BG_POLL_MS,
   captionText, cleanPalette, dimsFromAspect, elementToRegion, ideogramResolutionWarning,
   parseCaptionText,
   snapLayoutDim,
@@ -2290,25 +2292,73 @@ app.registerExtension({
       }
 
       function applyBgFromDetail(detail) {
-        if (!detail?.url) return;
-        const mtime = detail.mtime || Date.now();
-        if (mtime <= (node._bgFileMtime || 0)) return;
-        node._bgFileMtime = mtime;
-        bgLog("background update", detail.path || expectedBgFilename(detail.guid), "mtime=", mtime);
-        applyBgDisplay(`${detail.url}&t=${mtime}`);
+        const update = backgroundUpdateFromStat(node._bgFileMtime, detail);
+        if (!update) return;
+        node._bgFileMtime = update.mtime;
+        bgLog(
+          "background update",
+          detail.path || expectedBgFilename(detail.guid || ensureBgGuid()),
+          "mtime=",
+          update.mtime,
+        );
+        applyBgDisplay(update.displayUrl);
       }
 
       node.byaeApplyBgUpdate = applyBgFromDetail;
 
-      async function loadExistingBgOnce() {
+      // The preview node pushes a websocket event after it writes the temp
+      // file. If that event never arrives, check the same stat endpoint.
+      let bgPollToken = 0;
+      let bgPollTimer = null;
+      let bgPollClosed = false;
+      let bgPollWarned = false;
+
+      function stopBgPoll() {
+        bgPollClosed = true;
+        bgPollToken += 1;
+        if (bgPollTimer != null) {
+          clearTimeout(bgPollTimer);
+          bgPollTimer = null;
+        }
+      }
+
+      function kickBgPoll() {
+        if (bgPollClosed) return;
+        if (bgPollTimer != null) {
+          clearTimeout(bgPollTimer);
+          bgPollTimer = null;
+        }
+        bgPollToken += 1;
+        pollBg(bgPollToken);
+      }
+
+      async function pollBg(token) {
         const guid = ensureBgGuid();
         try {
-          const resp = await fetch(bgStatUrl(guid), { credentials: "same-origin" });
-          if (!resp.ok) return;
-          const data = await resp.json();
-          if (data.exists && data.url) applyBgFromDetail(data);
+          const resp = await fetch(bgStatUrl(guid), {
+            credentials: "same-origin",
+            signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined,
+          });
+          if (token !== bgPollToken || bgPollClosed || guid !== ensureBgGuid()) return;
+          if (resp.ok) {
+            const data = await resp.json();
+            if (token !== bgPollToken || bgPollClosed || guid !== ensureBgGuid()) return;
+            applyBgFromDetail(data);
+          }
         } catch (e) {
-          console.warn("ByAE Ideogram: initial bg check failed:", e);
+          if (token !== bgPollToken || bgPollClosed) return;
+          if (!bgPollWarned) {
+            bgPollWarned = true;
+            console.warn("ByAE Ideogram: background check failed:", e);
+          }
+        } finally {
+          if (token === bgPollToken && !bgPollClosed) {
+            bgPollTimer = setTimeout(() => {
+              bgPollTimer = null;
+              if (token !== bgPollToken || bgPollClosed) return;
+              pollBg(token);
+            }, BG_POLL_MS);
+          }
         }
       }
 
@@ -2337,6 +2387,7 @@ app.registerExtension({
         delete node.byaePersistState;
         delete node.byaeGetPromptInputs;
         delete node.byaeApplyBgUpdate;
+        stopBgPoll();
       });
 
       chainCallback(node, "onSerialize", function (info) {
@@ -2359,7 +2410,7 @@ app.registerExtension({
         syncCanvasToDims();
         rebuildStylePalette();
         renderPanel();
-        loadExistingBgOnce();
+        kickBgPoll();
         drawCanvas();
         updateTokens();
         refreshSizePendingHint();
@@ -2378,7 +2429,7 @@ app.registerExtension({
         syncCanvasToDims();
         rebuildStylePalette();
         renderPanel();
-        loadExistingBgOnce();
+        kickBgPoll();
         drawCanvas();
         updateTokens();
         refreshSizePendingHint();

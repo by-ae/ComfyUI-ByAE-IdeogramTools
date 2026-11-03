@@ -280,6 +280,24 @@ export function backgroundPlateShown(url, opacity) {
   return Boolean(url) && Number(opacity) > 0;
 }
 
+/** How often the editor checks the background temp file when a push does not arrive. */
+export const BG_POLL_MS = 2000;
+
+/**
+ * A newer background file, or null when this stat should be ignored.
+ * `exists: false` is a missing file. A push has no `exists` field and still applies.
+ * The view url already has a query string; `t` is only there so the browser reloads it.
+ */
+export function backgroundUpdateFromStat(previousMtime, stat) {
+  if (!stat || typeof stat !== "object" || !stat.url) return null;
+  if (stat.exists === false) return null;
+  const prev = Number(previousMtime);
+  const previous = Number.isFinite(prev) ? prev : 0;
+  const mtime = Number(stat.mtime);
+  if (!Number.isFinite(mtime) || mtime <= previous) return null;
+  return { mtime, displayUrl: `${stat.url}&t=${mtime}` };
+}
+
 /** Lowercase #rrggbb for input[type=color]. Anything else is unusable there. */
 export function swatchHex(color) {
   const hex = normalizeHex(color);

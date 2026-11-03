@@ -89,6 +89,7 @@ Region data and the style palette must be JSON lists. A blank value is left out.
 - Check the ComfyUI console for a line starting with `[ByAE Ideogram BG]`. A failed save names the reason: no image, an empty or invalid guid, an image that could not be converted, or a disk write error
 - RGBA frames are composited onto black, and single-channel frames are expanded to RGB, before the file is written. The conversion warning is for a tensor that still cannot be turned into an image
 - The temp directory must be writable (usually `ComfyUI/temp`)
+- If the push does not arrive, the editor checks that temp file every 2 seconds
 
 ### Saved workflows break after updating
 
