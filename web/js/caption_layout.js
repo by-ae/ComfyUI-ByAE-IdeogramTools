@@ -378,22 +378,78 @@ function regionRectKey(b) {
   return `${r(b.x)},${r(b.y)},${r(b.w)},${r(b.h)}`;
 }
 
+/** A positive width or height that the nudge crushed to an empty edge. */
+function regionWasFlattened(source, placed) {
+  if (!source || !placed) return false;
+  if (typeof source.w === "number" && source.w > 0 && !(placed.w > 0)) return true;
+  if (typeof source.h === "number" && source.h > 0 && !(placed.h > 0)) return true;
+  return false;
+}
+
+function placementFlattens(source, placed) {
+  const src = source || [];
+  for (let i = 0; i < src.length; i++) {
+    if (regionWasFlattened(src[i], placed[i])) return true;
+  }
+  return false;
+}
+
+function placedArea(boxes) {
+  let area = 0;
+  for (const b of boxes || []) {
+    const w = typeof b.w === "number" && b.w > 0 ? b.w : 0;
+    const h = typeof b.h === "number" && b.h > 0 ? b.h : 0;
+    area += w * h;
+  }
+  return area;
+}
+
+function classifyAddedNudge(incoming, nudge, have) {
+  const placed = offsetAddedRegions(incoming, nudge);
+  const finite = placed.filter(regionCoordsFinite);
+  return {
+    nudge,
+    flat: placementFlattens(incoming, placed),
+    hidden: finite.length > 0 && finite.every((b) => have.has(regionRectKey(b))),
+    area: placedArea(placed),
+  };
+}
+
 /**
  * Offset for an additive scene load. The first copy uses `step`. A later load
  * of the same scene steps further so the new regions are not hidden under the
- * previous copy. A partial overlap is left alone.
+ * previous copy. A partial overlap is left alone. If the next step would crush
+ * a region against the canvas edge, the whole scene steps the other way.
  */
 export function nudgeForAddedRegions(existing, incoming, step = 0.05) {
   const base = typeof step === "number" && Number.isFinite(step) && step > 0 ? step : 0.05;
   const have = new Set((existing || []).filter(regionCoordsFinite).map(regionRectKey));
-  let nudge = base;
+  let sawFlat = false;
+  let best = base;
+  let bestArea = -1;
+  const remember = (choice) => {
+    if (choice.area > bestArea) {
+      best = choice.nudge;
+      bestArea = choice.area;
+    }
+  };
   for (let n = 1; n <= 16; n++) {
-    nudge = base * n;
-    const placed = offsetAddedRegions(incoming, nudge).filter(regionCoordsFinite);
-    const hidden = placed.length > 0 && placed.every((b) => have.has(regionRectKey(b)));
-    if (!hidden) return nudge;
+    const choice = classifyAddedNudge(incoming, base * n, have);
+    if (choice.flat) {
+      sawFlat = true;
+      remember(choice);
+      break;
+    }
+    remember(choice);
+    if (!choice.hidden) return choice.nudge;
   }
-  return nudge;
+  if (!sawFlat) return base * 16;
+  for (let n = 1; n <= 16; n++) {
+    const choice = classifyAddedNudge(incoming, -base * n, have);
+    remember(choice);
+    if (!choice.flat && !choice.hidden) return choice.nudge;
+  }
+  return best;
 }
 
 /** Each Ctrl+V moves this far from the copied region. The next paste adds another step. */
@@ -404,16 +460,30 @@ export function nextPasteNudge(previousPastes) {
   return PASTE_NUDGE * (done + 1);
 }
 
-/** Ctrl+V: nudge a copy so it is visible, and do not keep the source store link. */
+function copyPastedRegion(b) {
+  const copy = {
+    ...b,
+    palette: Array.isArray(b.palette) ? b.palette.slice() : [],
+  };
+  delete copy.storeRef;
+  return copy;
+}
+
+/**
+ * Ctrl+V: nudge a copy so it is visible, and do not keep the source store link.
+ * The same nudge is applied to every region. If that would flatten one against
+ * the edge, the whole paste steps the opposite way instead of shearing.
+ */
 export function pasteRegions(boxes, nudge = PASTE_NUDGE) {
-  return offsetAddedRegions(boxes, nudge).map((b) => {
-    const copy = {
-      ...b,
-      palette: Array.isArray(b.palette) ? b.palette.slice() : [],
-    };
-    delete copy.storeRef;
-    return copy;
-  });
+  const forward = offsetAddedRegions(boxes, nudge);
+  let placed = forward;
+  if (placementFlattens(boxes, forward)) {
+    const back = offsetAddedRegions(boxes, -nudge);
+    if (!placementFlattens(boxes, back) || placedArea(back) > placedArea(forward)) {
+      placed = back;
+    }
+  }
+  return placed.map(copyPastedRegion);
 }
 
 /**

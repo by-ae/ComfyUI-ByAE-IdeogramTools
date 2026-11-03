@@ -378,6 +378,28 @@ describe("added scenes", () => {
     const existing = offsetAddedRegions([saved[0]], 0.05);
     assert.equal(nudgeForAddedRegions(existing, saved), 0.05);
   });
+
+  it("steps the other way when a further copy would shrink to nothing", () => {
+    const saved = [{ x: 0.8, y: 0.8, w: 0.2, h: 0.2, desc: "corner" }];
+    const existing = [];
+    const placed = [];
+    for (let n = 0; n < 6; n++) {
+      const nudge = nudgeForAddedRegions(existing, saved);
+      const copy = offsetAddedRegions(saved, nudge);
+      assert.ok(copy[0].w > 0, `copy ${n} width collapsed at nudge ${nudge}`);
+      assert.ok(copy[0].h > 0, `copy ${n} height collapsed at nudge ${nudge}`);
+      assert.ok(copy[0].x + copy[0].w <= 1 + 1e-9);
+      assert.ok(copy[0].y + copy[0].h <= 1 + 1e-9);
+      existing.push(...copy);
+      placed.push(copy[0]);
+    }
+    near(placed[0].x, 0.85);
+    near(placed[0].w, 0.15);
+    const reversed = placed.find((b) => b.w > 0.15);
+    assert.ok(reversed, "a later copy should keep the saved size by stepping back");
+    near(reversed.w, 0.2);
+    near(reversed.h, 0.2);
+  });
 });
 
 describe("saved scenes", () => {
@@ -473,6 +495,35 @@ describe("pasted regions", () => {
     const overlapX = first[0].x < second[0].x + second[0].w && first[0].x + first[0].w > second[0].x;
     const overlapY = first[0].y < second[0].y + second[0].h && first[0].y + first[0].h > second[0].y;
     assert.equal(overlapX && overlapY, false);
+  });
+
+  it("steps back when the next paste would flatten a region on the edge", () => {
+    const box = { x: 0.96, y: 0.5, w: 0.04, h: 0.2, desc: "edge" };
+    const first = pasteRegions([box], nextPasteNudge(0));
+    const second = pasteRegions([box], nextPasteNudge(1));
+    near(first[0].x, 0.99);
+    near(first[0].w, 0.01);
+    assert.ok(second[0].w > 0);
+    assert.ok(second[0].h > 0);
+    near(second[0].w, box.w);
+    near(second[0].h, box.h);
+    near(second[0].x, 0.9);
+    near(second[0].y, 0.44);
+    assert.equal(second[0].desc, "edge");
+  });
+
+  it("reverses every region together so the pasted layout does not shear", () => {
+    const boxes = [
+      { x: 0.9, y: 0.4, w: 0.08, h: 0.1, desc: "a" },
+      { x: 0.7, y: 0.2, w: 0.08, h: 0.1, desc: "b" },
+    ];
+    const placed = pasteRegions(boxes, 0.12);
+    near(placed[0].w, 0.08);
+    near(placed[1].w, 0.08);
+    near(placed[0].x - placed[1].x, boxes[0].x - boxes[1].x);
+    near(placed[0].y - placed[1].y, boxes[0].y - boxes[1].y);
+    near(placed[0].x, 0.78);
+    near(placed[1].x, 0.58);
   });
 
   it("does not keep the source store link or share its palette array", () => {
